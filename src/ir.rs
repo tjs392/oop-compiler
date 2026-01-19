@@ -114,7 +114,7 @@ pub enum ControlTransfer {
 pub struct BasicBlock {
     pub label: String,
     pub args: Vec<String>,
-    pub statements: Vec<Primitive>,
+    pub primitives: Vec<Primitive>,
     pub control_transfer: ControlTransfer,
 }
 
@@ -133,13 +133,141 @@ pub struct Program {
 /*
 pub struct Cat {
     /\_/\
-    |0 O|           ==__\
+    |0-O|           ==__\
   ==  ^ ==  _____       \ \
     | -  \    __  \      \ \
     __( \           ( \___/ |
   <______> ___ (______)____/
 }
 */
+
+// Code Gen to stdout rn
+impl Program {
+    pub fn print(&self) {
+        const INDENT: &str = "  ";
+
+        // data/global array section
+        println!("data:");
+        for global in &self.globals {
+            print!("global array {}: {{ ", global.name);
+            for (i, val) in global.vals.iter().enumerate() {
+                if i > 0 { print!(", "); }
+                print!("{}", val);
+            }
+            println!(" }}");
+        }
+
+        // basic block (code) section
+        println!("\ncode:");
+        for block in &self.blocks {
+            print!("\n{}", block.label);
+
+            if !block.args.is_empty() {
+                print!("({})", block.args.join(", "));
+            }
+            println!(":");
+
+            for prim in &block.primitives {
+                println!("{}{}", INDENT, self.format_primitive(prim));
+            }
+
+            println!("{}{}", INDENT, self.format_control_transfer(&block.control_transfer));
+        }
+    }
+
+    fn format_primitive(&self, prim: &Primitive) -> String {
+        match prim {
+
+            Primitive::Assign { dest, value } => {
+                format!("%{} = {}", dest, self.format_value(value))
+            },
+
+            Primitive::BinOp { dest, lhs, op, rhs } => {
+                format!("%{} = {} {} {}", dest, self.format_value(lhs), op, self.format_value(rhs))
+            },
+
+            Primitive::Call { dest, func, receiver, args } => {
+                let args_string: String = 
+                    args.iter()
+                        .map(|a| self.format_value(a))
+                        .collect::<Vec<String>>()
+                        .join(", ");
+
+                format!("%{} = call({}, {}, {})", 
+                    dest, 
+                    self.format_value(func), 
+                    self.format_value(receiver), 
+                    args_string
+                )
+            },
+
+            Primitive::Phi { dest, args } => {
+                let args_string: String = 
+                    args.iter()
+                        .map(|(label, val)| format!("{}, {}", label, self.format_value(val)))
+                        .collect::<Vec<String>>()
+                        .join(", ");
+
+                format!("%{} = phi({})", dest, args_string)
+            },
+
+            Primitive::Alloc { dest, size } => {
+                format!("%{} = alloc({})", dest, size)
+            },
+
+            Primitive::Print { val } => {
+                format!("print({})", self.format_value(val))
+            },
+
+            Primitive::GetElt { dest, arr, idx } => {
+                format!("%{} = getelt({}, {})", dest, self.format_value(arr), self.format_value(idx))
+            },
+
+            Primitive::SetElt { arr, idx, val } => {
+                format!("setelt({}, {}, {})", self.format_value(arr), self.format_value(idx), self.format_value(val))
+            },
+
+            Primitive::Load { dest, addr } => {
+                format!("%{} = load({})", dest, self.format_value(addr))
+            },
+
+            Primitive::Store { addr, val } => {
+                format!("store({}, {})", self.format_value(addr), self.format_value(val))
+            }
+        }
+    }
+
+    fn format_value(&self, value: &Value) -> String {
+        match value {
+            Value::Constant(num) => num.to_string(),
+
+            Value::Variable(var) => format!("%{}", var),
+
+            Value::Global(global) => format!("@{}", global),
+        }
+    }
+
+    fn format_control_transfer(&self, control: &ControlTransfer) -> String {
+        match control {
+            ControlTransfer::Jump { target } => {
+                format!("jump {}", target)
+            },
+
+            ControlTransfer::Branch { cond, then_lab, else_lab } => {
+                format!("if {} then {} else {}", self.format_value(cond), then_lab, else_lab)
+            },
+
+            ControlTransfer::Return { val } => {
+                format!("ret {}", self.format_value(val))
+            },
+
+            ControlTransfer::Fail { message } => {
+                format!("fail {}", message)
+            }
+        }
+    }
+}
+
 
 
 
