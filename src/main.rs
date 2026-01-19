@@ -4,6 +4,7 @@ mod expression;
 mod parser;
 mod statement;
 mod ast;
+mod ir;
 
 use token::{TokenType};
 use tokenizer::Tokenizer;

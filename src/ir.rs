@@ -1,0 +1,147 @@
+#[derive(Debug, Clone)]
+pub enum Value {
+    Constant(i64),
+    Variable(String),
+    Global(String)
+}
+
+#[derive(Debug, Clone)]
+pub enum Primitive {
+    
+    // %v = 69  or  %v = %x
+    // %v = i where i is a local variable or constant
+    Assign {
+        dest: String,
+        value: Value,
+    },
+
+    // %v = %w OP %x for OP in +, -, *, /, | (bitwise or), & (bitwise and), ^ (bitwise xor), ==
+    BinOp {
+        dest: String,
+        lhs: Value,
+        op: String,
+        rhs: Value,
+    },
+
+    // %v = call(%func, %receiver, %arg1, %arg2, ...)
+    // where %func is a local holding a code address, %receiver is the receiver of a method call
+    Call {
+        dest: String,
+        func: Value,
+        receiver: Value,
+        args: Vec<Value>,
+    },
+
+    // %v = phi(name, %x, name, %y, ...) is a phi function. 
+    // There must be at least 4 arguments (at least two predecessor blocks), and there must be an even number of arguments.
+    Phi {
+        dest: String,
+        args: Vec<(String, Value)>
+    },
+
+    // %v = alloc(n) where n is a constant integer, representing the number of pointer-sized fields to allocate. 
+    // Alternatively, allocates an array of n value slots.
+    Alloc {
+        dest: String,
+        size: i64,
+    },
+
+    // print(%v) prints the value passed, either a register (as shown) or a constant
+    Print {
+        val: Value,
+    },
+
+    // %v = getelt(%a, i) retrieves the i-th element of an array pointed to by %a. i may be a constant or a variable
+    GetElt {
+        dest: String,
+        arr: Value,
+        idx: Value,
+    },
+
+    // setelt(%a, i, i2) sets the i-th element of an array pointed to by %a to i2. 
+    // i and i2 may be constants, local variables, or globals
+    SetElt {
+        arr: Value,
+        idx: Value,
+        val: Value,
+    },
+
+    // %v = load(%base) loads the 8 bytes at the address pointed to by %base
+    Load {
+        dest: String,
+        addr: Value,
+    },
+
+    // store(%base, i) stores i at address %base. i may be a local variable, global, or constant
+    Store {
+        addr: Value,
+        val: Value,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum ControlTransfer {
+
+    // jump <name> is an unconditional branch to the block with the specified name. 
+    // The name does not include the colon (the colon for each block’s syntax marks the end of the block name).
+    Jump {
+        target: String,
+    },
+
+    // if %v then <name> else <name> branches to the first name if %v is true, otherwise the second name
+    Branch {
+        cond: Value,
+        then_lab: String,
+        else_lab: String,
+    },
+
+    // ret %v or ret n for some int literal n
+    Return {
+        val: Value,
+    },
+
+    // fail m crashes the program. m must be one of:
+    //  NotAPointer (to indicate a pointer operation like field access or method invocation was used with a non-pointer)
+    //  NotANumber (to indicate an arithmetic operation was attempted with a non-number value)
+    //  NoSuchField
+    //  NoSuchMethod
+    Fail {
+        message: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct BasicBlock {
+    pub label: String,
+    pub args: Vec<String>,
+    pub statements: Vec<Primitive>,
+    pub control_transfer: ControlTransfer,
+}
+
+#[derive(Debug, Clone)]
+pub struct GlobalArray {
+    pub name: String,
+    pub vals: Vec<String>,
+}
+
+#[derive(Debug)]
+pub struct Program {
+    pub globals: Vec<GlobalArray>,
+    pub blocks: Vec<BasicBlock>,
+}
+
+/*
+pub struct Cat {
+    /\_/\
+    |0 O|           ==__\
+  ==  ^ ==  _____       \ \
+    | -  \    __  \      \ \
+    __( \           ( \___/ |
+  <______> ___ (______)____/
+}
+*/
+
+
+
+
+
