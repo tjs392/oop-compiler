@@ -5,10 +5,12 @@ mod parser;
 mod statement;
 mod ast;
 mod ir;
+mod codegen;
 
 use token::{TokenType};
 use tokenizer::Tokenizer;
 use parser::Parser;
+use codegen::CodeGenerator;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -23,6 +25,15 @@ fn main() {
     let mut tok = Tokenizer::new(input);
 
     match args[1].as_str() {
+        "compile" => {
+            if args.len() < 3 {
+                eprintln!("Usage: <comp> compile <source_code>");
+                std::process::exit(1);
+            }
+            let input = args[2..].join(" ");
+            compile(input);
+        }
+
         "tokenize" => {
             while tok.peek().get_type() != TokenType::Eof {
                 println!("{:?}", tok.next());
@@ -52,5 +63,17 @@ fn main() {
         _ => {
             eprintln!("Unsupported subcommand: {}", args[1]);
         }
+        
     }
+}
+
+fn compile(input: String) {
+    let mut tokenizer = Tokenizer::new(input);
+    let mut parser = Parser::new(tokenizer);
+    let ast = parser.parse_program();
+
+    let mut code_generator = CodeGenerator::new();
+    let ir_program = code_generator.gen_program(&ast);
+
+    ir_program.print();
 }
