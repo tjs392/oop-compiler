@@ -18,6 +18,11 @@ pub enum Expression {
         base: Box<Expression>,
         field_name: String,
     },
+    FieldWrite {
+        base: Box<Expression>,
+        field_name: String,
+        value: Box<Expression>,
+    },
     ClassRef(String),
     Variable(String),
 }

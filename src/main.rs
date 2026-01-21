@@ -68,7 +68,13 @@ fn main() {
 }
 
 fn compile(input: String) {
-    let mut tokenizer = Tokenizer::new(input);
+    let source = if std::path::Path::new(&input).exists() {
+        std::fs::read_to_string(&input).expect(&format!("file {} does not exist", input))
+    } else {
+        input
+    };
+
+    let tokenizer = Tokenizer::new(source);
     let mut parser = Parser::new(tokenizer);
     let ast = parser.parse_program();
 

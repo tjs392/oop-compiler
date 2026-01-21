@@ -118,7 +118,6 @@ impl Parser {
             Token::This => Expression::ThisExpr,
 
             other => panic!("Token {:?} is not a valid start of an expression", other),
-
         }
     }
 
