@@ -2,18 +2,61 @@ class A [
     fields x
     method m() with locals:
       return &this.x
+    
+    method check() with locals:
+      if &this.x: {
+        return 1
+      } else {
+        return 0
+      }
 ]
 
 class B [
-    fields y
+    fields y, z
     method m() with locals:
-      return &this.y
+      if &this.y: {
+        return &this.y
+      } else {
+        return &this.z
+      }
+    
+    method compare() with locals:
+      if &this.y: {
+        if &this.z: {
+          return 3
+        } else {
+          return 2
+        }
+      } else {
+        return 1
+      }
 ]
 
 main with x, y:
 x = @A
 y = @B
+
 !x.x = 10
-!y.y = 20
-print(^x.m())
+print(^x.check())
+
+!x.x = 0
+print(^x.check())
+
+!y.y = 5
+!y.z = 99
 print(^y.m())
+
+!y.y = 0
+print(^y.m())
+
+!y.y = 1
+!y.z = 1
+print(^y.compare())
+
+!y.y = 1
+!y.z = 0
+print(^y.compare())
+
+!y.y = 0
+!y.z = 999
+print(^y.compare())

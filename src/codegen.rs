@@ -466,7 +466,7 @@ impl CodeGenerator {
                 // setelt(%x0, %5, 3)
                 self.push_instruction(Primitive::SetElt { 
                     arr: base_val, 
-                    idx: Value::Variable(offset), 
+                    idx: Value::Variable(offset),  
                     val: val, 
                 });
 
@@ -632,8 +632,76 @@ impl CodeGenerator {
                 self.gen_expression(&expression);
             }
 
+            /*
+            if e: {
+                statement1
+                statement2
+            } else {
+                statement1
+                statement2
+            }
+            */
             Statement::If { condition, then_body, else_body } => {
-                todo!("implement if");
+                // here we'll want to make an if label with a condition
+                // %condition = expression
+
+                /*
+                    CFG:
+                    current_block:
+                        branch cond -> then, else
+
+                    then:
+                        body
+                        jump -> merge
+                    
+                    else:
+                        body
+                        jump -> merge
+                    
+                    # new basic block:
+                    merge:
+                        continue
+                        
+                */
+                let condition = self.gen_expression(condition);
+                let then_label = self.gen_unique_label("then");
+                let else_label = self.gen_unique_label("else");
+                let merge_label = self.gen_unique_label("merge");
+
+                self.finish_block(ControlTransfer::Branch { 
+                    cond: condition, 
+                    then_lab: then_label.clone(), 
+                    else_lab: else_label.clone(), 
+                    },
+                    then_label,
+                );
+                for statement in then_body {
+                    self.gen_statement(statement);
+                }
+
+                // here we need to check if the then body is returning something
+                // because if the then body returns something, we need to handle the return and not
+                // just jump blindly
+                // we can check this just by checking the current basic block's control transfer, if it is a return
+                let then_control_transfer = 
+                    if matches!(self.current_block.control_transfer, ControlTransfer::Return {.. }) {
+                        self.current_block.control_transfer.clone()
+                    } else {
+                        ControlTransfer::Jump { target: merge_label.clone() }
+                    };
+                self.finish_block(then_control_transfer, else_label);
+
+                for statement in else_body {
+                    self.gen_statement(statement);
+                }
+
+                let else_control_transfer = 
+                    if matches!(self.current_block.control_transfer, ControlTransfer::Return {.. }) {
+                        self.current_block.control_transfer.clone()
+                    } else {
+                        ControlTransfer::Jump { target: merge_label.clone() }
+                    };
+                self.finish_block(else_control_transfer, merge_label);
             }
 
             Statement::IfOnly { condition, body } => {
