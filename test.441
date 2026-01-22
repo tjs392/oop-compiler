@@ -9,6 +9,12 @@ class A [
       } else {
         return 0
       }
+    
+    method earlyReturn() with locals:
+      ifonly &this.x: {
+        return 99
+      }
+      return 0
 ]
 
 class B [
@@ -30,9 +36,15 @@ class B [
       } else {
         return 1
       }
+    
+    method addBonus() with locals:
+      ifonly &this.y: {
+        !this.z = (&this.z + 100)
+      }
+      return &this.z
 ]
 
-main with x, y:
+main with x, y, temp:
 x = @A
 y = @B
 
@@ -60,3 +72,25 @@ print(^y.compare())
 !y.y = 0
 !y.z = 999
 print(^y.compare())
+
+print(888)
+
+!x.x = 5
+print(^x.earlyReturn())
+
+!x.x = 0
+print(^x.earlyReturn())
+
+!y.y = 1
+!y.z = 10
+print(^y.addBonus())
+
+!y.y = 0
+!y.z = 10
+print(^y.addBonus())
+
+temp = 0
+ifonly x: {
+  temp = 1
+}
+print(temp)

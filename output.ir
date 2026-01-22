@@ -1,7 +1,7 @@
 data:
-global array vtblA: { mA, checkA, 0 }
+global array vtblA: { mA, checkA, earlyReturnA, 0, 0 }
 global array fieldsA: { 2, 0, 0 }
-global array vtblB: { mB, 0, compareB }
+global array vtblB: { mB, 0, 0, compareB, addBonusB }
 global array fieldsB: { 0, 2, 3 }
 
 code:
@@ -61,508 +61,837 @@ else11:
 merge12:
   ret 0
 
-mB(this):
+earlyReturnA(this):
   %tag10 = %this & 1
-  if %tag10 then badptr13 else firstStore14
+  if %tag10 then badptr15 else firstStore16
 
-firstStore14:
+firstStore16:
   %fieldMapAddr11 = %this + 8
   %fieldMap12 = load(%fieldMapAddr11)
-  %offset13 = getelt(%fieldMap12, 1)
-  if %offset13 then load16 else badfield15
+  %offset13 = getelt(%fieldMap12, 0)
+  if %offset13 then load18 else badfield17
 
-load16:
+load18:
   %result14 = getelt(%this, %offset13)
-  jump final17
+  jump final19
 
-badptr13:
+badptr15:
   fail NotAPointer
 
-badfield15:
+badfield17:
   fail NoSuchField
 
-final17:
-  if %result14 then then18 else else19
+final19:
+  if %result14 then then13 else merge14
 
-then18:
+then13:
+  ret 99
+
+merge14:
+  ret 0
+
+mB(this):
   %tag15 = %this & 1
-  if %tag15 then badptr21 else firstStore22
+  if %tag15 then badptr20 else firstStore21
 
-firstStore22:
+firstStore21:
   %fieldMapAddr16 = %this + 8
   %fieldMap17 = load(%fieldMapAddr16)
   %offset18 = getelt(%fieldMap17, 1)
-  if %offset18 then load24 else badfield23
+  if %offset18 then load23 else badfield22
 
-load24:
+load23:
   %result19 = getelt(%this, %offset18)
-  jump final25
+  jump final24
 
-badptr21:
+badptr20:
   fail NotAPointer
 
-badfield23:
+badfield22:
   fail NoSuchField
 
-final25:
-  ret %result19
+final24:
+  if %result19 then then25 else else26
 
-else19:
+then25:
   %tag20 = %this & 1
-  if %tag20 then badptr26 else firstStore27
+  if %tag20 then badptr28 else firstStore29
 
-firstStore27:
+firstStore29:
   %fieldMapAddr21 = %this + 8
   %fieldMap22 = load(%fieldMapAddr21)
-  %offset23 = getelt(%fieldMap22, 2)
-  if %offset23 then load29 else badfield28
+  %offset23 = getelt(%fieldMap22, 1)
+  if %offset23 then load31 else badfield30
 
-load29:
+load31:
   %result24 = getelt(%this, %offset23)
-  jump final30
+  jump final32
 
-badptr26:
+badptr28:
   fail NotAPointer
 
-badfield28:
+badfield30:
   fail NoSuchField
 
-final30:
+final32:
   ret %result24
 
-merge20:
+else26:
+  %tag25 = %this & 1
+  if %tag25 then badptr33 else firstStore34
+
+firstStore34:
+  %fieldMapAddr26 = %this + 8
+  %fieldMap27 = load(%fieldMapAddr26)
+  %offset28 = getelt(%fieldMap27, 2)
+  if %offset28 then load36 else badfield35
+
+load36:
+  %result29 = getelt(%this, %offset28)
+  jump final37
+
+badptr33:
+  fail NotAPointer
+
+badfield35:
+  fail NoSuchField
+
+final37:
+  ret %result29
+
+merge27:
   ret 0
 
 compareB(this):
-  %tag25 = %this & 1
-  if %tag25 then badptr31 else firstStore32
-
-firstStore32:
-  %fieldMapAddr26 = %this + 8
-  %fieldMap27 = load(%fieldMapAddr26)
-  %offset28 = getelt(%fieldMap27, 1)
-  if %offset28 then load34 else badfield33
-
-load34:
-  %result29 = getelt(%this, %offset28)
-  jump final35
-
-badptr31:
-  fail NotAPointer
-
-badfield33:
-  fail NoSuchField
-
-final35:
-  if %result29 then then36 else else37
-
-then36:
   %tag30 = %this & 1
-  if %tag30 then badptr39 else firstStore40
+  if %tag30 then badptr38 else firstStore39
 
-firstStore40:
+firstStore39:
   %fieldMapAddr31 = %this + 8
   %fieldMap32 = load(%fieldMapAddr31)
-  %offset33 = getelt(%fieldMap32, 2)
-  if %offset33 then load42 else badfield41
+  %offset33 = getelt(%fieldMap32, 1)
+  if %offset33 then load41 else badfield40
 
-load42:
+load41:
   %result34 = getelt(%this, %offset33)
-  jump final43
+  jump final42
 
-badptr39:
+badptr38:
   fail NotAPointer
 
-badfield41:
+badfield40:
   fail NoSuchField
 
-final43:
-  if %result34 then then44 else else45
+final42:
+  if %result34 then then43 else else44
 
-then44:
+then43:
+  %tag35 = %this & 1
+  if %tag35 then badptr46 else firstStore47
+
+firstStore47:
+  %fieldMapAddr36 = %this + 8
+  %fieldMap37 = load(%fieldMapAddr36)
+  %offset38 = getelt(%fieldMap37, 2)
+  if %offset38 then load49 else badfield48
+
+load49:
+  %result39 = getelt(%this, %offset38)
+  jump final50
+
+badptr46:
+  fail NotAPointer
+
+badfield48:
+  fail NoSuchField
+
+final50:
+  if %result39 then then51 else else52
+
+then51:
   ret 3
 
-else45:
+else52:
   ret 2
 
-merge46:
-  ret 0
+merge53:
+  jump merge45
 
-else37:
+else44:
   ret 1
 
-merge38:
+merge45:
   ret 0
 
-main:
-  %objAddr35 = alloc(3)
-  store(%objAddr35, @vtblA)
-  %fieldsAddr36 = %objAddr35 + 8
-  store(%fieldsAddr36, @fieldsA)
-  %x = %objAddr35
-  %objAddr37 = alloc(4)
-  store(%objAddr37, @vtblB)
-  %fieldsAddr38 = %objAddr37 + 8
-  store(%fieldsAddr38, @fieldsB)
-  %y = %objAddr37
-  %tag39 = %x & 1
-  if %tag39 then badptr47 else firstStore48
+addBonusB(this):
+  %tag40 = %this & 1
+  if %tag40 then badptr56 else firstStore57
 
-firstStore48:
-  %fieldMapAddr40 = %x + 8
-  %fieldMap41 = load(%fieldMapAddr40)
-  %offset42 = getelt(%fieldMap41, 0)
-  if %offset42 then load50 else badfield49
+firstStore57:
+  %fieldMapAddr41 = %this + 8
+  %fieldMap42 = load(%fieldMapAddr41)
+  %offset43 = getelt(%fieldMap42, 1)
+  if %offset43 then load59 else badfield58
 
-load50:
-  setelt(%x, %offset42, 10)
-  jump final51
+load59:
+  %result44 = getelt(%this, %offset43)
+  jump final60
 
-badptr47:
+badptr56:
   fail NotAPointer
 
-badfield49:
+badfield58:
   fail NoSuchField
 
-final51:
-  %tag43 = %x & 1
-  if %tag43 then badptr52 else load53
+final60:
+  if %result44 then then54 else merge55
 
-load53:
-  %vtable44 = load(%x)
-  %methodPtr45 = getelt(%vtable44, 1)
-  if %methodPtr45 then callAndPrint55 else badmethod54
+then54:
+  %tag45 = %this & 1
+  if %tag45 then badptr61 else firstStore62
 
-callAndPrint55:
-  %callResult46 = call(%methodPtr45, %x, )
-  jump final56
+firstStore62:
+  %fieldMapAddr46 = %this + 8
+  %fieldMap47 = load(%fieldMapAddr46)
+  %offset48 = getelt(%fieldMap47, 2)
+  if %offset48 then load64 else badfield63
 
-badptr52:
+load64:
+  %result49 = getelt(%this, %offset48)
+  jump final65
+
+badptr61:
   fail NotAPointer
 
-badmethod54:
-  fail NoSuchMethod
-
-final56:
-  print(%callResult46)
-  %tag47 = %x & 1
-  if %tag47 then badptr57 else firstStore58
-
-firstStore58:
-  %fieldMapAddr48 = %x + 8
-  %fieldMap49 = load(%fieldMapAddr48)
-  %offset50 = getelt(%fieldMap49, 0)
-  if %offset50 then load60 else badfield59
-
-load60:
-  setelt(%x, %offset50, 0)
-  jump final61
-
-badptr57:
-  fail NotAPointer
-
-badfield59:
+badfield63:
   fail NoSuchField
 
-final61:
-  %tag51 = %x & 1
-  if %tag51 then badptr62 else load63
+final65:
+  %result50 = %result49 + 100
+  %tag51 = %this & 1
+  if %tag51 then badptr66 else firstStore67
 
-load63:
-  %vtable52 = load(%x)
-  %methodPtr53 = getelt(%vtable52, 1)
-  if %methodPtr53 then callAndPrint65 else badmethod64
+firstStore67:
+  %fieldMapAddr52 = %this + 8
+  %fieldMap53 = load(%fieldMapAddr52)
+  %offset54 = getelt(%fieldMap53, 2)
+  if %offset54 then load69 else badfield68
 
-callAndPrint65:
-  %callResult54 = call(%methodPtr53, %x, )
-  jump final66
+load69:
+  setelt(%this, %offset54, %result50)
+  jump final70
 
-badptr62:
+badptr66:
   fail NotAPointer
 
-badmethod64:
-  fail NoSuchMethod
+badfield68:
+  fail NoSuchField
 
-final66:
-  print(%callResult54)
-  %tag55 = %y & 1
-  if %tag55 then badptr67 else firstStore68
+final70:
+  jump merge55
 
-firstStore68:
-  %fieldMapAddr56 = %y + 8
+merge55:
+  %tag55 = %this & 1
+  if %tag55 then badptr71 else firstStore72
+
+firstStore72:
+  %fieldMapAddr56 = %this + 8
   %fieldMap57 = load(%fieldMapAddr56)
-  %offset58 = getelt(%fieldMap57, 1)
-  if %offset58 then load70 else badfield69
+  %offset58 = getelt(%fieldMap57, 2)
+  if %offset58 then load74 else badfield73
 
-load70:
-  setelt(%y, %offset58, 5)
-  jump final71
+load74:
+  %result59 = getelt(%this, %offset58)
+  jump final75
 
-badptr67:
+badptr71:
   fail NotAPointer
 
-badfield69:
+badfield73:
   fail NoSuchField
 
-final71:
-  %tag59 = %y & 1
-  if %tag59 then badptr72 else firstStore73
+final75:
+  ret %result59
 
-firstStore73:
-  %fieldMapAddr60 = %y + 8
-  %fieldMap61 = load(%fieldMapAddr60)
-  %offset62 = getelt(%fieldMap61, 2)
-  if %offset62 then load75 else badfield74
+main:
+  %objAddr60 = alloc(3)
+  store(%objAddr60, @vtblA)
+  %fieldsAddr61 = %objAddr60 + 8
+  store(%fieldsAddr61, @fieldsA)
+  %x = %objAddr60
+  %objAddr62 = alloc(4)
+  store(%objAddr62, @vtblB)
+  %fieldsAddr63 = %objAddr62 + 8
+  store(%fieldsAddr63, @fieldsB)
+  %y = %objAddr62
+  %tag64 = %x & 1
+  if %tag64 then badptr76 else firstStore77
 
-load75:
-  setelt(%y, %offset62, 99)
-  jump final76
+firstStore77:
+  %fieldMapAddr65 = %x + 8
+  %fieldMap66 = load(%fieldMapAddr65)
+  %offset67 = getelt(%fieldMap66, 0)
+  if %offset67 then load79 else badfield78
 
-badptr72:
+load79:
+  setelt(%x, %offset67, 10)
+  jump final80
+
+badptr76:
   fail NotAPointer
 
-badfield74:
+badfield78:
   fail NoSuchField
 
-final76:
-  %tag63 = %y & 1
-  if %tag63 then badptr77 else load78
+final80:
+  %tag68 = %x & 1
+  if %tag68 then badptr81 else load82
 
-load78:
-  %vtable64 = load(%y)
-  %methodPtr65 = getelt(%vtable64, 0)
-  if %methodPtr65 then callAndPrint80 else badmethod79
+load82:
+  %vtable69 = load(%x)
+  %methodPtr70 = getelt(%vtable69, 1)
+  if %methodPtr70 then callAndPrint84 else badmethod83
 
-callAndPrint80:
-  %callResult66 = call(%methodPtr65, %y, )
-  jump final81
+callAndPrint84:
+  %callResult71 = call(%methodPtr70, %x, )
+  jump final85
 
-badptr77:
+badptr81:
   fail NotAPointer
 
-badmethod79:
+badmethod83:
   fail NoSuchMethod
 
-final81:
-  print(%callResult66)
-  %tag67 = %y & 1
-  if %tag67 then badptr82 else firstStore83
+final85:
+  print(%callResult71)
+  %tag72 = %x & 1
+  if %tag72 then badptr86 else firstStore87
 
-firstStore83:
-  %fieldMapAddr68 = %y + 8
-  %fieldMap69 = load(%fieldMapAddr68)
-  %offset70 = getelt(%fieldMap69, 1)
-  if %offset70 then load85 else badfield84
+firstStore87:
+  %fieldMapAddr73 = %x + 8
+  %fieldMap74 = load(%fieldMapAddr73)
+  %offset75 = getelt(%fieldMap74, 0)
+  if %offset75 then load89 else badfield88
 
-load85:
-  setelt(%y, %offset70, 0)
-  jump final86
+load89:
+  setelt(%x, %offset75, 0)
+  jump final90
 
-badptr82:
+badptr86:
   fail NotAPointer
 
-badfield84:
+badfield88:
   fail NoSuchField
 
-final86:
-  %tag71 = %y & 1
-  if %tag71 then badptr87 else load88
+final90:
+  %tag76 = %x & 1
+  if %tag76 then badptr91 else load92
 
-load88:
-  %vtable72 = load(%y)
-  %methodPtr73 = getelt(%vtable72, 0)
-  if %methodPtr73 then callAndPrint90 else badmethod89
+load92:
+  %vtable77 = load(%x)
+  %methodPtr78 = getelt(%vtable77, 1)
+  if %methodPtr78 then callAndPrint94 else badmethod93
 
-callAndPrint90:
-  %callResult74 = call(%methodPtr73, %y, )
-  jump final91
+callAndPrint94:
+  %callResult79 = call(%methodPtr78, %x, )
+  jump final95
 
-badptr87:
+badptr91:
   fail NotAPointer
 
-badmethod89:
+badmethod93:
   fail NoSuchMethod
 
-final91:
-  print(%callResult74)
-  %tag75 = %y & 1
-  if %tag75 then badptr92 else firstStore93
+final95:
+  print(%callResult79)
+  %tag80 = %y & 1
+  if %tag80 then badptr96 else firstStore97
 
-firstStore93:
-  %fieldMapAddr76 = %y + 8
-  %fieldMap77 = load(%fieldMapAddr76)
-  %offset78 = getelt(%fieldMap77, 1)
-  if %offset78 then load95 else badfield94
+firstStore97:
+  %fieldMapAddr81 = %y + 8
+  %fieldMap82 = load(%fieldMapAddr81)
+  %offset83 = getelt(%fieldMap82, 1)
+  if %offset83 then load99 else badfield98
 
-load95:
-  setelt(%y, %offset78, 1)
-  jump final96
+load99:
+  setelt(%y, %offset83, 5)
+  jump final100
 
-badptr92:
+badptr96:
   fail NotAPointer
 
-badfield94:
+badfield98:
   fail NoSuchField
 
-final96:
-  %tag79 = %y & 1
-  if %tag79 then badptr97 else firstStore98
+final100:
+  %tag84 = %y & 1
+  if %tag84 then badptr101 else firstStore102
 
-firstStore98:
-  %fieldMapAddr80 = %y + 8
-  %fieldMap81 = load(%fieldMapAddr80)
-  %offset82 = getelt(%fieldMap81, 2)
-  if %offset82 then load100 else badfield99
+firstStore102:
+  %fieldMapAddr85 = %y + 8
+  %fieldMap86 = load(%fieldMapAddr85)
+  %offset87 = getelt(%fieldMap86, 2)
+  if %offset87 then load104 else badfield103
 
-load100:
-  setelt(%y, %offset82, 1)
-  jump final101
+load104:
+  setelt(%y, %offset87, 99)
+  jump final105
 
-badptr97:
+badptr101:
   fail NotAPointer
 
-badfield99:
+badfield103:
   fail NoSuchField
 
-final101:
-  %tag83 = %y & 1
-  if %tag83 then badptr102 else load103
+final105:
+  %tag88 = %y & 1
+  if %tag88 then badptr106 else load107
 
-load103:
-  %vtable84 = load(%y)
-  %methodPtr85 = getelt(%vtable84, 2)
-  if %methodPtr85 then callAndPrint105 else badmethod104
+load107:
+  %vtable89 = load(%y)
+  %methodPtr90 = getelt(%vtable89, 0)
+  if %methodPtr90 then callAndPrint109 else badmethod108
 
-callAndPrint105:
-  %callResult86 = call(%methodPtr85, %y, )
-  jump final106
+callAndPrint109:
+  %callResult91 = call(%methodPtr90, %y, )
+  jump final110
 
-badptr102:
+badptr106:
   fail NotAPointer
 
-badmethod104:
+badmethod108:
   fail NoSuchMethod
 
-final106:
-  print(%callResult86)
-  %tag87 = %y & 1
-  if %tag87 then badptr107 else firstStore108
+final110:
+  print(%callResult91)
+  %tag92 = %y & 1
+  if %tag92 then badptr111 else firstStore112
 
-firstStore108:
-  %fieldMapAddr88 = %y + 8
-  %fieldMap89 = load(%fieldMapAddr88)
-  %offset90 = getelt(%fieldMap89, 1)
-  if %offset90 then load110 else badfield109
+firstStore112:
+  %fieldMapAddr93 = %y + 8
+  %fieldMap94 = load(%fieldMapAddr93)
+  %offset95 = getelt(%fieldMap94, 1)
+  if %offset95 then load114 else badfield113
 
-load110:
-  setelt(%y, %offset90, 1)
-  jump final111
+load114:
+  setelt(%y, %offset95, 0)
+  jump final115
 
-badptr107:
+badptr111:
   fail NotAPointer
 
-badfield109:
+badfield113:
   fail NoSuchField
 
-final111:
-  %tag91 = %y & 1
-  if %tag91 then badptr112 else firstStore113
+final115:
+  %tag96 = %y & 1
+  if %tag96 then badptr116 else load117
 
-firstStore113:
-  %fieldMapAddr92 = %y + 8
-  %fieldMap93 = load(%fieldMapAddr92)
-  %offset94 = getelt(%fieldMap93, 2)
-  if %offset94 then load115 else badfield114
+load117:
+  %vtable97 = load(%y)
+  %methodPtr98 = getelt(%vtable97, 0)
+  if %methodPtr98 then callAndPrint119 else badmethod118
 
-load115:
-  setelt(%y, %offset94, 0)
-  jump final116
+callAndPrint119:
+  %callResult99 = call(%methodPtr98, %y, )
+  jump final120
 
-badptr112:
+badptr116:
   fail NotAPointer
 
-badfield114:
-  fail NoSuchField
-
-final116:
-  %tag95 = %y & 1
-  if %tag95 then badptr117 else load118
-
-load118:
-  %vtable96 = load(%y)
-  %methodPtr97 = getelt(%vtable96, 2)
-  if %methodPtr97 then callAndPrint120 else badmethod119
-
-callAndPrint120:
-  %callResult98 = call(%methodPtr97, %y, )
-  jump final121
-
-badptr117:
-  fail NotAPointer
-
-badmethod119:
+badmethod118:
   fail NoSuchMethod
 
-final121:
-  print(%callResult98)
-  %tag99 = %y & 1
-  if %tag99 then badptr122 else firstStore123
+final120:
+  print(%callResult99)
+  %tag100 = %y & 1
+  if %tag100 then badptr121 else firstStore122
 
-firstStore123:
-  %fieldMapAddr100 = %y + 8
-  %fieldMap101 = load(%fieldMapAddr100)
-  %offset102 = getelt(%fieldMap101, 1)
-  if %offset102 then load125 else badfield124
+firstStore122:
+  %fieldMapAddr101 = %y + 8
+  %fieldMap102 = load(%fieldMapAddr101)
+  %offset103 = getelt(%fieldMap102, 1)
+  if %offset103 then load124 else badfield123
 
-load125:
-  setelt(%y, %offset102, 0)
-  jump final126
+load124:
+  setelt(%y, %offset103, 1)
+  jump final125
 
-badptr122:
+badptr121:
   fail NotAPointer
 
-badfield124:
+badfield123:
   fail NoSuchField
 
-final126:
-  %tag103 = %y & 1
-  if %tag103 then badptr127 else firstStore128
+final125:
+  %tag104 = %y & 1
+  if %tag104 then badptr126 else firstStore127
 
-firstStore128:
-  %fieldMapAddr104 = %y + 8
-  %fieldMap105 = load(%fieldMapAddr104)
-  %offset106 = getelt(%fieldMap105, 2)
-  if %offset106 then load130 else badfield129
+firstStore127:
+  %fieldMapAddr105 = %y + 8
+  %fieldMap106 = load(%fieldMapAddr105)
+  %offset107 = getelt(%fieldMap106, 2)
+  if %offset107 then load129 else badfield128
 
-load130:
-  setelt(%y, %offset106, 999)
-  jump final131
+load129:
+  setelt(%y, %offset107, 1)
+  jump final130
 
-badptr127:
+badptr126:
   fail NotAPointer
 
-badfield129:
+badfield128:
   fail NoSuchField
 
-final131:
-  %tag107 = %y & 1
-  if %tag107 then badptr132 else load133
+final130:
+  %tag108 = %y & 1
+  if %tag108 then badptr131 else load132
 
-load133:
-  %vtable108 = load(%y)
-  %methodPtr109 = getelt(%vtable108, 2)
-  if %methodPtr109 then callAndPrint135 else badmethod134
+load132:
+  %vtable109 = load(%y)
+  %methodPtr110 = getelt(%vtable109, 3)
+  if %methodPtr110 then callAndPrint134 else badmethod133
 
-callAndPrint135:
-  %callResult110 = call(%methodPtr109, %y, )
-  jump final136
+callAndPrint134:
+  %callResult111 = call(%methodPtr110, %y, )
+  jump final135
 
-badptr132:
+badptr131:
   fail NotAPointer
 
-badmethod134:
+badmethod133:
   fail NoSuchMethod
 
-final136:
-  print(%callResult110)
+final135:
+  print(%callResult111)
+  %tag112 = %y & 1
+  if %tag112 then badptr136 else firstStore137
+
+firstStore137:
+  %fieldMapAddr113 = %y + 8
+  %fieldMap114 = load(%fieldMapAddr113)
+  %offset115 = getelt(%fieldMap114, 1)
+  if %offset115 then load139 else badfield138
+
+load139:
+  setelt(%y, %offset115, 1)
+  jump final140
+
+badptr136:
+  fail NotAPointer
+
+badfield138:
+  fail NoSuchField
+
+final140:
+  %tag116 = %y & 1
+  if %tag116 then badptr141 else firstStore142
+
+firstStore142:
+  %fieldMapAddr117 = %y + 8
+  %fieldMap118 = load(%fieldMapAddr117)
+  %offset119 = getelt(%fieldMap118, 2)
+  if %offset119 then load144 else badfield143
+
+load144:
+  setelt(%y, %offset119, 0)
+  jump final145
+
+badptr141:
+  fail NotAPointer
+
+badfield143:
+  fail NoSuchField
+
+final145:
+  %tag120 = %y & 1
+  if %tag120 then badptr146 else load147
+
+load147:
+  %vtable121 = load(%y)
+  %methodPtr122 = getelt(%vtable121, 3)
+  if %methodPtr122 then callAndPrint149 else badmethod148
+
+callAndPrint149:
+  %callResult123 = call(%methodPtr122, %y, )
+  jump final150
+
+badptr146:
+  fail NotAPointer
+
+badmethod148:
+  fail NoSuchMethod
+
+final150:
+  print(%callResult123)
+  %tag124 = %y & 1
+  if %tag124 then badptr151 else firstStore152
+
+firstStore152:
+  %fieldMapAddr125 = %y + 8
+  %fieldMap126 = load(%fieldMapAddr125)
+  %offset127 = getelt(%fieldMap126, 1)
+  if %offset127 then load154 else badfield153
+
+load154:
+  setelt(%y, %offset127, 0)
+  jump final155
+
+badptr151:
+  fail NotAPointer
+
+badfield153:
+  fail NoSuchField
+
+final155:
+  %tag128 = %y & 1
+  if %tag128 then badptr156 else firstStore157
+
+firstStore157:
+  %fieldMapAddr129 = %y + 8
+  %fieldMap130 = load(%fieldMapAddr129)
+  %offset131 = getelt(%fieldMap130, 2)
+  if %offset131 then load159 else badfield158
+
+load159:
+  setelt(%y, %offset131, 999)
+  jump final160
+
+badptr156:
+  fail NotAPointer
+
+badfield158:
+  fail NoSuchField
+
+final160:
+  %tag132 = %y & 1
+  if %tag132 then badptr161 else load162
+
+load162:
+  %vtable133 = load(%y)
+  %methodPtr134 = getelt(%vtable133, 3)
+  if %methodPtr134 then callAndPrint164 else badmethod163
+
+callAndPrint164:
+  %callResult135 = call(%methodPtr134, %y, )
+  jump final165
+
+badptr161:
+  fail NotAPointer
+
+badmethod163:
+  fail NoSuchMethod
+
+final165:
+  print(%callResult135)
+  print(888)
+  %tag136 = %x & 1
+  if %tag136 then badptr166 else firstStore167
+
+firstStore167:
+  %fieldMapAddr137 = %x + 8
+  %fieldMap138 = load(%fieldMapAddr137)
+  %offset139 = getelt(%fieldMap138, 0)
+  if %offset139 then load169 else badfield168
+
+load169:
+  setelt(%x, %offset139, 5)
+  jump final170
+
+badptr166:
+  fail NotAPointer
+
+badfield168:
+  fail NoSuchField
+
+final170:
+  %tag140 = %x & 1
+  if %tag140 then badptr171 else load172
+
+load172:
+  %vtable141 = load(%x)
+  %methodPtr142 = getelt(%vtable141, 2)
+  if %methodPtr142 then callAndPrint174 else badmethod173
+
+callAndPrint174:
+  %callResult143 = call(%methodPtr142, %x, )
+  jump final175
+
+badptr171:
+  fail NotAPointer
+
+badmethod173:
+  fail NoSuchMethod
+
+final175:
+  print(%callResult143)
+  %tag144 = %x & 1
+  if %tag144 then badptr176 else firstStore177
+
+firstStore177:
+  %fieldMapAddr145 = %x + 8
+  %fieldMap146 = load(%fieldMapAddr145)
+  %offset147 = getelt(%fieldMap146, 0)
+  if %offset147 then load179 else badfield178
+
+load179:
+  setelt(%x, %offset147, 0)
+  jump final180
+
+badptr176:
+  fail NotAPointer
+
+badfield178:
+  fail NoSuchField
+
+final180:
+  %tag148 = %x & 1
+  if %tag148 then badptr181 else load182
+
+load182:
+  %vtable149 = load(%x)
+  %methodPtr150 = getelt(%vtable149, 2)
+  if %methodPtr150 then callAndPrint184 else badmethod183
+
+callAndPrint184:
+  %callResult151 = call(%methodPtr150, %x, )
+  jump final185
+
+badptr181:
+  fail NotAPointer
+
+badmethod183:
+  fail NoSuchMethod
+
+final185:
+  print(%callResult151)
+  %tag152 = %y & 1
+  if %tag152 then badptr186 else firstStore187
+
+firstStore187:
+  %fieldMapAddr153 = %y + 8
+  %fieldMap154 = load(%fieldMapAddr153)
+  %offset155 = getelt(%fieldMap154, 1)
+  if %offset155 then load189 else badfield188
+
+load189:
+  setelt(%y, %offset155, 1)
+  jump final190
+
+badptr186:
+  fail NotAPointer
+
+badfield188:
+  fail NoSuchField
+
+final190:
+  %tag156 = %y & 1
+  if %tag156 then badptr191 else firstStore192
+
+firstStore192:
+  %fieldMapAddr157 = %y + 8
+  %fieldMap158 = load(%fieldMapAddr157)
+  %offset159 = getelt(%fieldMap158, 2)
+  if %offset159 then load194 else badfield193
+
+load194:
+  setelt(%y, %offset159, 10)
+  jump final195
+
+badptr191:
+  fail NotAPointer
+
+badfield193:
+  fail NoSuchField
+
+final195:
+  %tag160 = %y & 1
+  if %tag160 then badptr196 else load197
+
+load197:
+  %vtable161 = load(%y)
+  %methodPtr162 = getelt(%vtable161, 4)
+  if %methodPtr162 then callAndPrint199 else badmethod198
+
+callAndPrint199:
+  %callResult163 = call(%methodPtr162, %y, )
+  jump final200
+
+badptr196:
+  fail NotAPointer
+
+badmethod198:
+  fail NoSuchMethod
+
+final200:
+  print(%callResult163)
+  %tag164 = %y & 1
+  if %tag164 then badptr201 else firstStore202
+
+firstStore202:
+  %fieldMapAddr165 = %y + 8
+  %fieldMap166 = load(%fieldMapAddr165)
+  %offset167 = getelt(%fieldMap166, 1)
+  if %offset167 then load204 else badfield203
+
+load204:
+  setelt(%y, %offset167, 0)
+  jump final205
+
+badptr201:
+  fail NotAPointer
+
+badfield203:
+  fail NoSuchField
+
+final205:
+  %tag168 = %y & 1
+  if %tag168 then badptr206 else firstStore207
+
+firstStore207:
+  %fieldMapAddr169 = %y + 8
+  %fieldMap170 = load(%fieldMapAddr169)
+  %offset171 = getelt(%fieldMap170, 2)
+  if %offset171 then load209 else badfield208
+
+load209:
+  setelt(%y, %offset171, 10)
+  jump final210
+
+badptr206:
+  fail NotAPointer
+
+badfield208:
+  fail NoSuchField
+
+final210:
+  %tag172 = %y & 1
+  if %tag172 then badptr211 else load212
+
+load212:
+  %vtable173 = load(%y)
+  %methodPtr174 = getelt(%vtable173, 4)
+  if %methodPtr174 then callAndPrint214 else badmethod213
+
+callAndPrint214:
+  %callResult175 = call(%methodPtr174, %y, )
+  jump final215
+
+badptr211:
+  fail NotAPointer
+
+badmethod213:
+  fail NoSuchMethod
+
+final215:
+  print(%callResult175)
+  %temp = 0
+  if %x then then216 else merge217
+
+then216:
+  %temp = 1
+  jump merge217
+
+merge217:
+  print(%temp)
   ret 0

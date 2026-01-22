@@ -20,6 +20,8 @@ pub struct CodeGenerator {
     global_field_ids: HashMap<String, usize>,
 
     global_method_ids: HashMap<String, usize>,
+
+    current_block_has_explicit_return: bool,
 }
 
 struct ClassMetadata {
@@ -52,7 +54,8 @@ impl CodeGenerator {
             globals: vec![],
             class_metadata_map: HashMap::new(),
             global_field_ids: HashMap::new(),
-            global_method_ids: HashMap::new()
+            global_method_ids: HashMap::new(),
+            current_block_has_explicit_return: false,
         }
     }
 
@@ -189,6 +192,7 @@ impl CodeGenerator {
                 val: Value::Constant(0),
             },
         };
+        self.current_block_has_explicit_return = false;
     }
 
     // need to return value for generation of nested expressions and statements
@@ -519,10 +523,11 @@ impl CodeGenerator {
                 let badptr = self.gen_unique_label("badptr");
                 let load = self.gen_unique_label("load");
 
-                self.finish_block(ControlTransfer::Branch { 
-                    cond: Value::Variable(tag), 
-                    then_lab: badptr.clone(), 
-                    else_lab: load.clone(), 
+                self.finish_block(
+                    ControlTransfer::Branch { 
+                        cond: Value::Variable(tag), 
+                        then_lab: badptr.clone(), 
+                        else_lab: load.clone(), 
                     },
                     load.clone(),
                 );
@@ -548,10 +553,11 @@ impl CodeGenerator {
                 let badmethod = self.gen_unique_label("badmethod");
                 let call_and_print = self.gen_unique_label("callAndPrint");
 
-                self.finish_block(ControlTransfer::Branch { 
-                    cond: Value::Variable(method_ptr.clone()), 
-                    then_lab: call_and_print.clone(), 
-                    else_lab: badmethod.clone() 
+                self.finish_block(
+                    ControlTransfer::Branch { 
+                        cond: Value::Variable(method_ptr.clone()), 
+                        then_lab: call_and_print.clone(), 
+                        else_lab: badmethod.clone() 
                     },
                     call_and_print.clone()
                 );
@@ -621,6 +627,7 @@ impl CodeGenerator {
                 let val = self.gen_expression(expression);
 
                 self.current_block.control_transfer = ControlTransfer::Return { val };
+                self.current_block_has_explicit_return = true;
             }
 
             Statement::FieldWrite { base, field, value } => {
@@ -668,10 +675,11 @@ impl CodeGenerator {
                 let else_label = self.gen_unique_label("else");
                 let merge_label = self.gen_unique_label("merge");
 
-                self.finish_block(ControlTransfer::Branch { 
-                    cond: condition, 
-                    then_lab: then_label.clone(), 
-                    else_lab: else_label.clone(), 
+                self.finish_block(
+                    ControlTransfer::Branch { 
+                        cond: condition, 
+                        then_lab: then_label.clone(), 
+                        else_lab: else_label.clone(), 
                     },
                     then_label,
                 );
@@ -684,7 +692,7 @@ impl CodeGenerator {
                 // just jump blindly
                 // we can check this just by checking the current basic block's control transfer, if it is a return
                 let then_control_transfer = 
-                    if matches!(self.current_block.control_transfer, ControlTransfer::Return {.. }) {
+                    if self.current_block_has_explicit_return {
                         self.current_block.control_transfer.clone()
                     } else {
                         ControlTransfer::Jump { target: merge_label.clone() }
@@ -696,7 +704,7 @@ impl CodeGenerator {
                 }
 
                 let else_control_transfer = 
-                    if matches!(self.current_block.control_transfer, ControlTransfer::Return {.. }) {
+                    if self.current_block_has_explicit_return {
                         self.current_block.control_transfer.clone()
                     } else {
                         ControlTransfer::Jump { target: merge_label.clone() }
@@ -705,7 +713,30 @@ impl CodeGenerator {
             }
 
             Statement::IfOnly { condition, body } => {
-                todo!("implement ifonly");
+
+                let then_label = self.gen_unique_label("then");
+                let merge_label = self.gen_unique_label("merge");
+                let condition = self.gen_expression(condition);
+                self.finish_block(
+                    ControlTransfer::Branch { 
+                        cond: condition, 
+                        then_lab: then_label.clone(), 
+                        else_lab: merge_label.clone(),
+                    },
+                    then_label.clone(),
+                );
+
+                for statement in body {
+                    self.gen_statement(statement);
+                }
+
+                let then_control_transfer = 
+                    if self.current_block_has_explicit_return {
+                        self.current_block.control_transfer.clone()
+                    } else {
+                        ControlTransfer::Jump { target: merge_label.clone() }
+                    };
+                self.finish_block(then_control_transfer, merge_label);
             }
 
             Statement::While { condition, body } => {
