@@ -18,6 +18,8 @@ pub struct CodeGenerator {
     class_metadata_map: HashMap<String, ClassMetadata>,
 
     global_field_ids: HashMap<String, usize>,
+
+    global_method_ids: HashMap<String, usize>,
 }
 
 struct ClassMetadata {
@@ -50,6 +52,7 @@ impl CodeGenerator {
             globals: vec![],
             class_metadata_map: HashMap::new(),
             global_field_ids: HashMap::new(),
+            global_method_ids: HashMap::new()
         }
     }
 
@@ -93,6 +96,7 @@ impl CodeGenerator {
             generate a getelt instruction "getelt(field_map_addr, 1)"
         */
         let mut next_field_id = 0;
+        let mut next_method_id = 0;
         for class in &program.classes {
             for field in &class.fields {
                 if !self.global_field_ids.contains_key(field) {
@@ -100,9 +104,17 @@ impl CodeGenerator {
                     next_field_id += 1;
                 }
             }
+
+            for method in &class.methods {
+                if !self.global_method_ids.contains_key(&method.name) {
+                    self.global_method_ids.insert(method.name.clone(), next_method_id);
+                    next_method_id += 1;
+                }
+            }
         }
 
         let total_fields = self.global_field_ids.len();
+        let total_methods = self.global_method_ids.len();
 
         for class in &program.classes {
             let mut field_map = HashMap::new();
@@ -115,10 +127,11 @@ impl CodeGenerator {
                 vtable_map.insert(method.name.clone(), i);
             }
 
-            let vtable_vals: Vec<String> = class.methods
-                .iter()
-                .map(|meth| format!("{}{}", meth.name, class.name))
-                .collect();
+            let mut vtable_vals: Vec<String> = vec!["0".to_string(); total_methods];
+            for method in &class.methods {
+                let global_id = *self.global_method_ids.get(&method.name).unwrap();
+                vtable_vals[global_id] = format!("{}{}", method.name, class.name);
+            }
 
             self.globals.push(GlobalArray { 
                 name: format!("vtbl{}", class.name), 
@@ -479,7 +492,105 @@ impl CodeGenerator {
             
             Expression::MethodCall { base, method_name, args } => {
                 let base = self.gen_expression(base);
-                todo!("handle method call")
+                /*
+                # print(x.m())
+                %7 = %x0 & 1
+                if %7 then badptr3 else l1
+                l1:
+                %8 = load(%x0)         # load vtable (note: offset 0, not offset 8)
+                %9 = getelt(%8, 0)  # lookup method id 0 (the only method here)
+                if %9 then callAndPrint else badmethod
+                callAndPrint:
+                %10 = call(%9, %x0)
+                print(%10)
+                */
+
+                // For printing
+                // %7 = %x0 & 1
+                let tag = self.gen_unique_variable("tag");
+                self.push_instruction(Primitive::BinOp { 
+                    dest: tag.clone(), 
+                    lhs: base.clone(), 
+                    op: "&".to_string(), 
+                    rhs: Value::Constant(1),
+                });
+
+                // if %7 then badptr3 else l1
+                let badptr = self.gen_unique_label("badptr");
+                let load = self.gen_unique_label("load");
+
+                self.finish_block(ControlTransfer::Branch { 
+                    cond: Value::Variable(tag), 
+                    then_lab: badptr.clone(), 
+                    else_lab: load.clone(), 
+                    },
+                    load.clone(),
+                );
+
+                // %8 = load (%x0)
+                let vtable = self.gen_unique_variable("vtable");
+                self.push_instruction(Primitive::Load { 
+                    dest: vtable.clone(), 
+                    addr: base.clone(),  
+                });
+
+                // %9 = getelt(%8, 0)
+                let global_method_id = *self.global_method_ids.get(method_name)
+                    .expect(&format!("Method {} not found", method_name));
+                let method_ptr = self.gen_unique_variable("methodPtr");
+                self.push_instruction(Primitive::GetElt { 
+                    dest: method_ptr.clone(), 
+                    arr: Value::Variable(vtable), 
+                    idx: Value::Constant(global_method_id as i64),
+                });
+
+                // if %9 then callAndPrint else badmethod
+                let badmethod = self.gen_unique_label("badmethod");
+                let call_and_print = self.gen_unique_label("callAndPrint");
+
+                self.finish_block(ControlTransfer::Branch { 
+                    cond: Value::Variable(method_ptr.clone()), 
+                    then_lab: call_and_print.clone(), 
+                    else_lab: badmethod.clone() 
+                    },
+                    call_and_print.clone()
+                );
+
+
+                // callAndPrint:
+                // %10 = call(%9, %x0)
+
+                let result = self.gen_unique_variable("callResult");
+                let arguments: Vec<Value> = args
+                    .iter()
+                    .map(|a| self.gen_expression(a))
+                    .collect();
+                
+                self.push_instruction(Primitive::Call { 
+                    dest: result.clone(), 
+                    func: Value::Variable(method_ptr.clone()), 
+                    receiver: base,
+                    args: arguments,
+                });
+
+                // fail labels
+                let final_label = self.gen_unique_label("final");
+                self.finish_block(
+                    ControlTransfer::Jump { target: final_label.clone() },
+                    badptr.clone()
+                );
+
+                self.finish_block(
+                    ControlTransfer::Fail { message: "NotAPointer".to_string() },
+                    badmethod.clone()
+                );
+
+                self.finish_block(
+                    ControlTransfer::Fail { message: "NoSuchMethod".to_string() },
+                    final_label.clone()
+                );
+                
+                Value::Variable(result)
             }
         }
     }
@@ -535,8 +646,72 @@ impl CodeGenerator {
         }
     }
 
+    fn gen_method(&mut self, class: &ast::Class, method: &ast::Method) {
+        /*
+        This is code from the IR parser.
+        It shows thats when parsing a basic block for a mthod, it looks for arguments as
+            
+        > methodName(this, arg1, arg2...) with locals:
+
+        pub fn parse_opt_block_arg_list(i: &[u8]) -> IResult<&[u8], Vec<&str>> {
+            alt((
+                |x| tuple((tag(":"),opt(tag("\r")),tag("\n")))(x).map(|(rest,_)| (rest, vec![])),
+                |x| tuple((tag("("), multispace0, separated_list0(tuple((multispace0,tag(","),multispace0)),parse_block_arg), multispace0, tag("):"), opt(tag("\r")), tag("\n")))(x).map(|(rest,(_,_,args,_,_,_,_))| (rest,args))
+            ))(i)
+        }
+        pub fn parse_basic_block(i: &[u8]) -> IResult<&[u8], BasicBlock> {
+            let (i,_) = multispace0(i)?;
+            tuple((
+                identifier, parse_opt_block_arg_list, parse_ir_statements, parse_control
+            ))(i).map(|(rest,(name,formals,prims,ctrl))| (rest,BasicBlock { name: name, instrs: prims, next: ctrl, formals: formals}))
+        }
+        */
+        let method_label = format!("{}{}", method.name, class.name);
+
+        let mut args = vec!["this".to_string()];
+        for arg in &method.args {
+            args.push(arg.clone());
+        }
+
+        self.current_block = BasicBlock { 
+            label: method_label, 
+            args, 
+            primitives: vec![], 
+            control_transfer: ControlTransfer::Return { val: Value::Constant(0) },
+        };
+
+        for statement in &method.body {
+            self.gen_statement(statement);
+        }
+
+        // need to make sure there is a return
+        if !matches!(self.current_block.control_transfer, ControlTransfer::Return { .. }) {
+            self.current_block.control_transfer = ControlTransfer::Return { 
+                val: Value::Constant(0),
+            }
+        }
+
+        self.blocks.push(self.current_block.clone());
+    }
+
     pub fn gen_program(&mut self, program: &ast::Program) -> ir::Program {
         self.gen_class_metadata(program);
+
+        for class in &program.classes {
+            for method in &class.methods {
+                self.gen_method(class, method);
+            }
+        }
+
+        // After generating methods, we need to reset the current basic vlock back to main
+        self.current_block = BasicBlock { 
+            label: "main".to_string(), 
+            args: vec![], 
+            primitives: vec![], 
+            control_transfer: ControlTransfer::Return { 
+                val: Value::Constant(0)
+             } 
+        };
 
         for statement in &program.main_body {
             self.gen_statement(statement);

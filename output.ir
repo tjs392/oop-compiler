@@ -1,0 +1,146 @@
+data:
+global array vtblA: { mA }
+global array fieldsA: { 2, 0 }
+global array vtblB: { mB }
+global array fieldsB: { 0, 2 }
+
+code:
+
+mA(this):
+  %tag0 = %this & 1
+  if %tag0 then badptr0 else firstStore1
+
+firstStore1:
+  %fieldMapAddr1 = %this + 8
+  %fieldMap2 = load(%fieldMapAddr1)
+  %offset3 = getelt(%fieldMap2, 0)
+  if %offset3 then load3 else badfield2
+
+load3:
+  %result4 = getelt(%this, %offset3)
+  jump final4
+
+badptr0:
+  fail NotAPointer
+
+badfield2:
+  fail NoSuchField
+
+final4:
+  ret %result4
+
+mB(this):
+  %tag5 = %this & 1
+  if %tag5 then badptr5 else firstStore6
+
+firstStore6:
+  %fieldMapAddr6 = %this + 8
+  %fieldMap7 = load(%fieldMapAddr6)
+  %offset8 = getelt(%fieldMap7, 1)
+  if %offset8 then load8 else badfield7
+
+load8:
+  %result9 = getelt(%this, %offset8)
+  jump final9
+
+badptr5:
+  fail NotAPointer
+
+badfield7:
+  fail NoSuchField
+
+final9:
+  ret %result9
+
+main:
+  %objAddr10 = alloc(3)
+  store(%objAddr10, @vtblA)
+  %fieldsAddr11 = %objAddr10 + 8
+  store(%fieldsAddr11, @fieldsA)
+  %x = %objAddr10
+  %objAddr12 = alloc(3)
+  store(%objAddr12, @vtblB)
+  %fieldsAddr13 = %objAddr12 + 8
+  store(%fieldsAddr13, @fieldsB)
+  %y = %objAddr12
+  %tag14 = %x & 1
+  if %tag14 then badptr10 else firstStore11
+
+firstStore11:
+  %fieldMapAddr15 = %x + 8
+  %fieldMap16 = load(%fieldMapAddr15)
+  %offset17 = getelt(%fieldMap16, 0)
+  if %offset17 then load13 else badfield12
+
+load13:
+  setelt(%x, %offset17, 10)
+  jump final14
+
+badptr10:
+  fail NotAPointer
+
+badfield12:
+  fail NoSuchField
+
+final14:
+  %tag18 = %y & 1
+  if %tag18 then badptr15 else firstStore16
+
+firstStore16:
+  %fieldMapAddr19 = %y + 8
+  %fieldMap20 = load(%fieldMapAddr19)
+  %offset21 = getelt(%fieldMap20, 1)
+  if %offset21 then load18 else badfield17
+
+load18:
+  setelt(%y, %offset21, 20)
+  jump final19
+
+badptr15:
+  fail NotAPointer
+
+badfield17:
+  fail NoSuchField
+
+final19:
+  %tag22 = %x & 1
+  if %tag22 then badptr20 else load21
+
+load21:
+  %vtable23 = load(%x)
+  %methodPtr24 = getelt(%vtable23, 0)
+  if %methodPtr24 then callAndPrint23 else badmethod22
+
+callAndPrint23:
+  %callResult25 = call(%methodPtr24, %x, )
+  jump final24
+
+badptr20:
+  fail NotAPointer
+
+badmethod22:
+  fail NoSuchMethod
+
+final24:
+  print(%callResult25)
+  %tag26 = %y & 1
+  if %tag26 then badptr25 else load26
+
+load26:
+  %vtable27 = load(%y)
+  %methodPtr28 = getelt(%vtable27, 0)
+  if %methodPtr28 then callAndPrint28 else badmethod27
+
+callAndPrint28:
+  %callResult29 = call(%methodPtr28, %y, )
+  jump final29
+
+badptr25:
+  fail NotAPointer
+
+badmethod27:
+  fail NoSuchMethod
+
+final29:
+  print(%callResult29)
+  ret 0

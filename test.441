@@ -3,13 +3,17 @@ class A [
     method m() with locals:
       return &this.x
 ]
+
 class B [
     fields y
     method m() with locals:
-      return 0
+      return &this.y
 ]
 
-main with x:
+main with x, y:
 x = @A
-!x.x = 3
-print(&x.x)
+y = @B
+!x.x = 10
+!y.y = 20
+print(^x.m())
+print(^y.m())
