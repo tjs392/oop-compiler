@@ -4,7 +4,7 @@ use crate::ast;
 use crate::ir::{self, BasicBlock, Primitive, Value, ControlTransfer, GlobalArray};
 use std::collections::HashMap;
 
-pub struct CodeGenerator {
+pub struct IRBuilder {
     temp_counter: usize,
 
     block_counter: usize,
@@ -34,10 +34,10 @@ struct ClassMetadata {
     vtable_map: HashMap<String, usize>,
 }
 
-impl CodeGenerator {
+impl IRBuilder {
 
     pub fn new() -> Self {
-        CodeGenerator { 
+        IRBuilder { 
             temp_counter: 0, 
             block_counter: 0, 
             // Going to just initialize as a basic block that returns 0
@@ -740,7 +740,42 @@ impl CodeGenerator {
             }
 
             Statement::While { condition, body } => {
-                todo!("implement while");
+                let cond_label = self.gen_unique_label("condLabel");
+                let body_label = self.gen_unique_label("whileBody");
+                let merge_label = self.gen_unique_label("whileMerge");
+
+                self.finish_block(
+                    ControlTransfer::Jump { 
+                        target: cond_label.clone() 
+                    },
+                    cond_label.clone(),
+                );
+
+                let cond_val = self.gen_expression(condition);
+                self.finish_block(
+                    ControlTransfer::Branch {
+                        cond: cond_val,
+                        then_lab: body_label.clone(),
+                        else_lab: merge_label.clone(),
+                    },
+                    body_label
+                );
+
+                for statement in body {
+                    self.gen_statement(statement);
+                }
+
+                let while_control_transfer = 
+                    if self.current_block_has_explicit_return {
+                        self.current_block.control_transfer.clone()
+                    } else {
+                        ControlTransfer::Jump { target: cond_label }
+                    };
+
+                self.finish_block(
+                    while_control_transfer,
+                    merge_label,
+                );
             }
         }
     }

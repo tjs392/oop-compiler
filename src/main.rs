@@ -5,12 +5,13 @@ mod parser;
 mod statement;
 mod ast;
 mod ir;
-mod codegen;
+mod ir_builder;
+mod cfg;
 
 use token::{TokenType};
 use tokenizer::Tokenizer;
 use parser::Parser;
-use codegen::CodeGenerator;
+use ir_builder::IRBuilder;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -78,7 +79,7 @@ fn compile(input: String) {
     let mut parser = Parser::new(tokenizer);
     let ast = parser.parse_program();
 
-    let mut code_generator = CodeGenerator::new();
+    let mut code_generator = IRBuilder::new();
     let ir_program = code_generator.gen_program(&ast);
 
     ir_program.print();

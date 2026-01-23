@@ -10,9 +10,10 @@ class A [
         return 0
       }
     
-    method earlyReturn() with locals:
-      ifonly &this.x: {
-        return 99
+    method countdown() with locals:
+      while &this.x: {
+        print(&this.x)
+        !this.x = (&this.x - 1)
       }
       return 0
 ]
@@ -37,14 +38,15 @@ class B [
         return 1
       }
     
-    method addBonus() with locals:
-      ifonly &this.y: {
-        !this.z = (&this.z + 100)
+    method sumToZ() with locals:
+      while &this.y: {
+        !this.z = (&this.z + &this.y)
+        !this.y = (&this.y - 1)
       }
       return &this.z
 ]
 
-main with x, y, temp:
+main with x, y, counter:
 x = @A
 y = @B
 
@@ -76,21 +78,26 @@ print(^y.compare())
 print(888)
 
 !x.x = 5
-print(^x.earlyReturn())
+_ = ^x.countdown()
+
+print(777)
 
 !x.x = 0
-print(^x.earlyReturn())
+_ = ^x.countdown()
 
-!y.y = 1
-!y.z = 10
-print(^y.addBonus())
+print(666)
+
+!y.y = 5
+!y.z = 0
+print(^y.sumToZ())
 
 !y.y = 0
-!y.z = 10
-print(^y.addBonus())
+!y.z = 42
+print(^y.sumToZ())
 
-temp = 0
-ifonly x: {
-  temp = 1
+counter = 3
+while counter: {
+  print(counter)
+  counter = (counter - 1)
 }
-print(temp)
+print(555)
