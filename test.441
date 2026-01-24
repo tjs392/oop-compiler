@@ -1,103 +1,44 @@
 class A [
     fields x
     method m() with locals:
-      return &this.x
-    
-    method check() with locals:
-      if &this.x: {
-        return 1
-      } else {
         return 0
-      }
-    
-    method countdown() with locals:
-      while &this.x: {
-        print(&this.x)
-        !this.x = (&this.x - 1)
-      }
-      return 0
 ]
 
-class B [
-    fields y, z
-    method m() with locals:
-      if &this.y: {
-        return &this.y
-      } else {
-        return &this.z
-      }
-    
-    method compare() with locals:
-      if &this.y: {
-        if &this.z: {
-          return 3
-        } else {
-          return 2
-        }
-      } else {
-        return 1
-      }
-    
-    method sumToZ() with locals:
-      while &this.y: {
-        !this.z = (&this.z + &this.y)
-        !this.y = (&this.y - 1)
-      }
-      return &this.z
-]
+main with a, b, c, i:
 
-main with x, y, counter:
-x = @A
-y = @B
+a = 1
+b = 2
 
-!x.x = 10
-print(^x.check())
-
-!x.x = 0
-print(^x.check())
-
-!y.y = 5
-!y.z = 99
-print(^y.m())
-
-!y.y = 0
-print(^y.m())
-
-!y.y = 1
-!y.z = 1
-print(^y.compare())
-
-!y.y = 1
-!y.z = 0
-print(^y.compare())
-
-!y.y = 0
-!y.z = 999
-print(^y.compare())
-
-print(888)
-
-!x.x = 5
-_ = ^x.countdown()
-
-print(777)
-
-!x.x = 0
-_ = ^x.countdown()
-
-print(666)
-
-!y.y = 5
-!y.z = 0
-print(^y.sumToZ())
-
-!y.y = 0
-!y.z = 42
-print(^y.sumToZ())
-
-counter = 3
-while counter: {
-  print(counter)
-  counter = (counter - 1)
+if a: {
+    a = 10
+    b = 20
+} else {
+    a = 30
+    b = 40
 }
-print(555)
+
+print(a)
+print(b)
+
+c = 0
+if a: {
+    if b: {
+        c = 1
+    } else {
+        c = 2
+    }
+} else {
+    c = 3
+}
+print(c)
+
+i = 5
+a = 0
+while i: {
+    a = (a + i)
+    i = (i - 1)
+}
+print(a)
+print(i)
+
+print(999)

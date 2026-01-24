@@ -1,24 +1,21 @@
 use crate::expression::Expression;
 use crate::statement::Statement;
 use crate::ast;
-use crate::ir::{self, BasicBlock, Primitive, Value, ControlTransfer, GlobalArray};
+use crate::ir::{self, BasicBlock, Function, Primitive, Value, ControlTransfer, GlobalArray};
 use std::collections::HashMap;
 
 pub struct IRBuilder {
     temp_counter: usize,
-
     block_counter: usize,
 
     current_block: BasicBlock,
-
-    blocks: Vec<BasicBlock>,
-
+    current_function_blocks: Vec<BasicBlock>,
+    
+    functions: Vec<Function>,
     globals: Vec<GlobalArray>,
 
     class_metadata_map: HashMap<String, ClassMetadata>,
-
     global_field_ids: HashMap<String, usize>,
-
     global_method_ids: HashMap<String, usize>,
 
     current_block_has_explicit_return: bool,
@@ -34,23 +31,51 @@ struct ClassMetadata {
     vtable_map: HashMap<String, usize>,
 }
 
+/*
+This ir BUIlder builds the following tree:
+
+Program
+|
+|__ globals: Vec<GlobalArray>
+|
+|__ functions: Vec<Function>
+    |
+    |___ Function "main"
+    |   |
+    |   |__ name: "main"
+    |   |__ args: []
+    |   \__ blocks: Vec<BascBlock>
+    |       \__ BasicBlock "entry"
+    |       \__ other basic blocks
+    |
+    |
+    |___ Function "funcA"
+        |__ name ..
+        \__ args, etc..
+        
+this is loosely inspired how rustc handles body and contains functions
+for easy ssa gen
+https://github.com/rust-lang/rust/blob/main/compiler/rustc_middle/src/mir/mod.rs
+
+by grouping blocks into functions, we can process each function independently to convert to ssa
+
+i tried without grouping, and it made it super hard to convert to ssa
+*/
 impl IRBuilder {
 
     pub fn new() -> Self {
         IRBuilder { 
             temp_counter: 0, 
             block_counter: 0, 
-            // Going to just initialize as a basic block that returns 0
-            // This is because I don't want to unwrap eberything when I access curr
             current_block: BasicBlock {
-                label: "main".to_string(),
-                args: vec![],
+                label: "entry".to_string(),
                 primitives: vec![],
                 control_transfer: ControlTransfer::Return {
                     val: Value::Constant(0),
                 },
             },
-            blocks: vec![], 
+            current_function_blocks: vec![],
+            functions: vec![],
             globals: vec![],
             class_metadata_map: HashMap::new(),
             global_field_ids: HashMap::new(),
@@ -182,15 +207,41 @@ impl IRBuilder {
     fn finish_block(&mut self, transfer: ControlTransfer, next_label: String) {
         self.current_block.control_transfer = transfer;
         // clone here acts as a move from current block -> blocks
-        self.blocks.push(self.current_block.clone());
+        self.current_function_blocks.push(self.current_block.clone());
 
         self.current_block = BasicBlock {
             label: next_label,
-            args: vec![],
             primitives: vec![],
             control_transfer: ControlTransfer::Return {
                 val: Value::Constant(0),
             },
+        };
+        self.current_block_has_explicit_return = false;
+    }
+
+    // in this refactor, we will be grouping basic blocks into functions
+    // this will allow ssa gen to walk functions instead of the entire program
+    // finish function has the same logic as finish basic block
+    // we just teack the basic blocks, and when we reach the final one for the func
+    // push function w/ its basic blocks to the builder
+    fn finish_function(&mut self, name: String, args: Vec<String>) {
+        if !matches!(self.current_block.control_transfer, ControlTransfer::Return { .. }) {
+            self.current_block.control_transfer = ControlTransfer::Return { val: Value::Constant(0) }
+        }
+        self.current_function_blocks.push(self.current_block.clone());
+
+
+        self.functions.push(Function {
+            name,
+            args,
+            // we can just transfer the ownership 
+            blocks: std::mem::take(&mut self.current_function_blocks),
+        });
+
+        self.current_block = BasicBlock {
+            label: "entry".to_string(),
+            primitives: vec![],
+            control_transfer: ControlTransfer::Return { val: Value::Constant(0) }
         };
         self.current_block_has_explicit_return = false;
     }
@@ -800,32 +851,27 @@ impl IRBuilder {
             ))(i).map(|(rest,(name,formals,prims,ctrl))| (rest,BasicBlock { name: name, instrs: prims, next: ctrl, formals: formals}))
         }
         */
-        let method_label = format!("{}{}", method.name, class.name);
+        let function_name = format!("{}{}", method.name, class.name);
 
         let mut args = vec!["this".to_string()];
         for arg in &method.args {
             args.push(arg.clone());
         }
 
+        // just build the basic blocks and push the function at the end of the statement evaluation
         self.current_block = BasicBlock { 
-            label: method_label, 
-            args, 
+            label: function_name.clone(),
             primitives: vec![], 
             control_transfer: ControlTransfer::Return { val: Value::Constant(0) },
         };
+        self.current_function_blocks = vec![];
+        self.current_block_has_explicit_return = false;
 
         for statement in &method.body {
             self.gen_statement(statement);
         }
 
-        // need to make sure there is a return
-        if !matches!(self.current_block.control_transfer, ControlTransfer::Return { .. }) {
-            self.current_block.control_transfer = ControlTransfer::Return { 
-                val: Value::Constant(0),
-            }
-        }
-
-        self.blocks.push(self.current_block.clone());
+        self.finish_function(function_name, args);
     }
 
     pub fn gen_program(&mut self, program: &ast::Program) -> ir::Program {
@@ -837,32 +883,24 @@ impl IRBuilder {
             }
         }
 
-        // After generating methods, we need to reset the current basic vlock back to main
-        self.current_block = BasicBlock { 
-            label: "main".to_string(), 
-            args: vec![], 
-            primitives: vec![], 
-            control_transfer: ControlTransfer::Return { 
-                val: Value::Constant(0)
-             } 
+        // generating main block
+        self.current_block = BasicBlock {
+            label: "main".to_string(),
+            primitives: vec![],
+            control_transfer: ControlTransfer::Return { val: Value::Constant(0) },
         };
+        self.current_function_blocks = vec![];
+        self.current_block_has_explicit_return = false;
 
         for statement in &program.main_body {
             self.gen_statement(statement);
         }
 
-        if !matches!(self.current_block.control_transfer, ControlTransfer::Return { .. }) {
-            self.current_block.control_transfer = ControlTransfer::Return {
-                val: Value::Constant(0),
-            };
-        }
-
-        self.blocks.push(self.current_block.clone());
-
+        self.finish_function("main".to_string(), vec![]);
 
         ir::Program {
             globals: self.globals.clone(),
-            blocks: self.blocks.clone(),
+            functions: self.functions.clone(),
         }
     }
 }

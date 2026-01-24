@@ -113,9 +113,20 @@ pub enum ControlTransfer {
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub label: String,
-    pub args: Vec<String>,
     pub primitives: Vec<Primitive>,
     pub control_transfer: ControlTransfer,
+}
+
+// https://github.com/rust-lang/rust/blob/main/compiler/rustc_middle/src/mir/mod.rs
+// rustc represents "Body" like functoin
+// one closed entity with the basic blocks that ar einside of it
+// this will allow me for easier CFG -> SSA conversion 
+// here just going to define "function" like a simple Body struct with basic blocks
+#[derive(Debug, Clone)]
+pub struct Function {
+    pub name: String,
+    pub args: Vec<String>,
+    pub blocks: Vec<BasicBlock>,
 }
 
 #[derive(Debug, Clone)]
@@ -127,7 +138,7 @@ pub struct GlobalArray {
 #[derive(Debug)]
 pub struct Program {
     pub globals: Vec<GlobalArray>,
-    pub blocks: Vec<BasicBlock>,
+    pub functions: Vec<Function>,
 }
 
 /*
@@ -159,22 +170,26 @@ impl Program {
 
         // basic block (code) section
         println!("\ncode:");
-        for block in &self.blocks {
-            print!("\n{}", block.label);
-
-            if !block.args.is_empty() {
-                print!("({})", block.args.join(", "));
+        for function in &self.functions {
+            print!("\n{}", function.name);
+            if !function.args.is_empty() {
+                print!("({})", function.args.join(", "));
             }
             println!(":");
 
-            for prim in &block.primitives {
-                println!("{}{}", INDENT, self.format_primitive(prim));
-            }
+            for (i, block) in function.blocks.iter().enumerate() {
+                if i > 0 {
+                    println!("\n{}:", block.label);
+                }
 
-            println!("{}{}", INDENT, self.format_control_transfer(&block.control_transfer));
+                for prim in &block.primitives {
+                    println!("{}{}", INDENT, self.format_primitive(prim));
+                }
+
+                println!("{}{}", INDENT, self.format_control_transfer(&block.control_transfer));
+            }
         }
     }
-
     fn format_primitive(&self, prim: &Primitive) -> String {
         match prim {
 

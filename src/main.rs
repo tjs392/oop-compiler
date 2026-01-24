@@ -12,6 +12,7 @@ use token::{TokenType};
 use tokenizer::Tokenizer;
 use parser::Parser;
 use ir_builder::IRBuilder;
+use cfg::CFG;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -79,8 +80,13 @@ fn compile(input: String) {
     let mut parser = Parser::new(tokenizer);
     let ast = parser.parse_program();
 
-    let mut code_generator = IRBuilder::new();
-    let ir_program = code_generator.gen_program(&ast);
+    let mut ir_builder = IRBuilder::new();
+    let mut ir_program = ir_builder.gen_program(&ast);
+
+    for function in &mut ir_program.functions {
+        let mut cfg = CFG::new(function);
+        cfg.convert_to_ssa(function);
+    }
 
     ir_program.print();
 }

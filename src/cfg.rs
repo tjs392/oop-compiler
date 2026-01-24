@@ -1,10 +1,10 @@
-use crate::ir::{ControlTransfer, Program};
+use crate::ir::{ControlTransfer, Function, Primitive, Value};
 use std::collections::HashMap;
 use std::collections::HashSet;
 
 pub struct CFG {
 
-    // bb label -> index in program.blocks
+    // bb label -> index in function.blocks
     block_map: HashMap<String, usize>,
 
     // 2d array
@@ -22,21 +22,22 @@ pub struct CFG {
     num_blocks: usize,
 }
 
+// cfgs will be made per function
 impl CFG {
-    pub fn new(program: &Program) -> Self {
-        let num_blocks = program.blocks.len();
+    pub fn new(function: &Function) -> Self {
+        let num_blocks = function.blocks.len();
         let mut block_map = HashMap::new();
-        let mut predecessors: Vec<Vec<usize>> = vec![vec![]; program.blocks.len()];
-        let mut successors: Vec<Vec<usize>> = vec![vec![]; program.blocks.len()];
+        let mut predecessors: Vec<Vec<usize>> = vec![vec![]; function.blocks.len()];
+        let mut successors: Vec<Vec<usize>> = vec![vec![]; function.blocks.len()];
 
         // here we will just build the block map so we have o(1) access to the labels/index
-        for (idx, block) in program.blocks.iter().enumerate() {
+        for (idx, block) in function.blocks.iter().enumerate() {
             block_map.insert(block.label.clone(), idx);
         }
 
         // this second pass will
         // 1. compute predecessors and successors for dominance frontiers
-        for (idx, block) in program.blocks.iter().enumerate() {
+        for (idx, block) in function.blocks.iter().enumerate() {
             // build out predecessors and successors
             match &block.control_transfer {
 
@@ -74,6 +75,16 @@ impl CFG {
         }
     }
 
+    pub fn convert_to_ssa(&mut self, function: &mut Function) {
+        self.compute_dominator_sets();
+        self.insert_phi_functions(function);
+
+        let tree = self.build_dominator_tree();
+        let mut stacks: HashMap<String, Vec<String>> = HashMap::new();
+        let mut counter: usize = 0;
+
+        self.rename(function, self.entry, &mut stacks, &mut counter, &tree);
+    }
     // dom(block) = { block } U { & dom(pred) } for all pred in pred(block) }
     fn compute_dominator_sets(&mut self) {
         let mut dominator_sets: Vec<HashSet<usize>> = vec![HashSet::new(); self.num_blocks];
@@ -175,4 +186,272 @@ impl CFG {
         dominance_fronters
     }
 
+    /*
+        -= inserting phi functions =-
+
+        1. first, we need to scan each block to find which variables are defined in the block
+            - build map: variable -> set of blocks that define the variable
+
+        2. then, for each variable with definitions, we can use the computed dominance frontier to find where different defs will merge
+            to find where they merge:
+            - if block 1 defines the variable, and block 2 is in its dominance frontier,
+                then block 2 can be reached by paths that dont go through block 1
+            - this means that block 2 can get that variable from somewhere else, so we need to add a phi function
+            
+        3. then, we can use a work queue for adding the phi function, just add to work queue and process it l8r
+            - add x = phi(stuf) in block 2, then block 2 defines x
+            - so check 2's dominance frontier
+            - keep going until queue is empty
+
+        4. just need one more pass to rename the variables given their new phi placement
+    */
+
+    // need to find assignments inside of blocks
+    fn collect_assignments(&self, function: &Function) -> HashMap<String, HashSet<usize>> {
+        let mut assignments: HashMap<String, HashSet<usize>> = HashMap::new();
+
+        for (idx, block) in function.blocks.iter().enumerate() {
+            for primitive in &block.primitives {
+                if let Primitive::Assign { dest, .. } = primitive {
+                    assignments.entry(dest.clone())
+                        .or_insert_with(HashSet::new)
+                        .insert(idx);
+                }
+            }
+        }
+        assignments
+    }
+
+    fn insert_phi_functions(&mut self, function: &mut Function) {
+        let dominance_frontiers = self.compute_dominance_frontiers();
+
+        // for example: x is assigned in blocks {0, 2, 3}
+        let assignments = self.collect_assignments(function);
+
+        // block idx -> set of variables that require a phi func
+        let mut phis: HashMap<usize, HashSet<String>> = HashMap::new();
+
+        for (var, assigning_blocks) in &assignments {
+            // note: we need a work stack because technically a phi function is an assignment in itself
+            //       so after inserting a phi function, we need to put that new assignment on top of the stack
+            let mut work_stack: Vec<usize> = assigning_blocks.iter().copied().collect();
+            let mut has_phi_func: HashSet<usize> = HashSet::new();
+
+            while let Some(idx) = work_stack.pop() {
+                // need to check every block in the dominance frontier of the block at idx
+                for &frontier in &dominance_frontiers[idx] {
+
+                    // if there is no phi function here yet, we need to place one
+                    if !has_phi_func.contains(&frontier) {
+                        has_phi_func.insert(frontier);
+
+                        // here record and tell the work queue that 
+                        // this fronter block needs a phi function for 
+                        // variable "var"
+                        phis
+                            .entry(frontier)
+                            .or_insert_with(HashSet::new)
+                            .insert(var.clone());
+                        work_stack.push(frontier);
+                    }
+                }
+            }
+        }
+
+        // now we'll insert the phi functions where we need to
+        for (idx, vars) in phis {
+            let predecessors = &self.predecessors[idx];
+            
+            let pred_labels: Vec<String> = predecessors.iter()
+                .map(|&pred_idx| function.blocks[pred_idx].label.clone())
+                .collect();
+
+            let block = &mut function.blocks[idx];
+
+            for var in vars {
+                let args: Vec<(String, Value)> = pred_labels.iter()
+                    .map(|label| (label.clone(), Value::Variable(var.clone())))
+                    .collect();
+                
+                // last, just add the phi to the beginning of the block
+                block.primitives.insert(0, Primitive::Phi {
+                    dest: var,
+                    args,
+                });
+            }
+        }
+    }
+
+    /*
+    source: https://www.cs.cornell.edu/courses/cs6120/2022sp/lesson/6/
+    I will be implementing an algorithm similar to the one described here
+    */
+    // first i need to invert my dominators so i have parent -> child
+    fn build_dominator_tree(&self) -> Vec<Vec<usize>> {
+        let immediates = self.compute_immediate_dominators();
+        let mut tree: Vec<Vec<usize>> = vec![vec![]; self.num_blocks];
+
+        for (child, parent) in immediates.iter().enumerate() {
+            if let Some(p) = parent {
+                tree[*p].push(child);
+            }
+        }
+        tree
+    }
+
+    // param counters tracks how many version of the variable have been created
+    // param "stacks" is a stack of each variable "rename" need this because the algorithm pushes the variable rename after backtracking the dominaance tree
+    fn rename(&mut self, 
+                function: &mut Function, 
+                idx: usize, 
+                stacks: &mut HashMap<String, Vec<String>>,
+                counter: &mut usize,
+                tree: &Vec<Vec<usize>>) {
+        
+        let mut pushed: HashMap<String, usize> = HashMap::new();
+
+        let block = &mut function.blocks[idx];
+        for primitive in &mut block.primitives {
+
+            //parse all the primitives
+            // first rename the usages of a variable
+            // sof or %a = %x + %y, the usages of the variable are %x and %y, but %a is the assignment
+            rename_uses(primitive, stacks);
+
+            // next rename the assignment
+            if let Some(assignment) = get_dest(primitive) {
+                let old_name = assignment.clone();
+                let new_name = counter.to_string();
+                *counter += 1;
+
+                *assignment = new_name.clone();
+                stacks.entry(old_name.clone()).or_insert_with(Vec::new).push(new_name);
+                *pushed.entry(old_name).or_insert(0) += 1;
+            }
+        }
+
+        rename_control_transfer(&mut block.control_transfer, stacks);
+
+        let this_label = function.blocks[idx].label.clone();
+        let successors = self.successors[idx].clone();
+
+        // fill phi arguments
+        for succ_idx in successors {
+            let succ_block = &mut function.blocks[succ_idx];
+
+            for primitive in &mut succ_block.primitives {
+                if let Primitive::Phi { args, .. } = primitive {
+                    for (label, val) in args {
+                        if label == &this_label {
+                            if let Value::Variable(var_name) = val {
+                                if let Some(stack) = stacks.get(var_name.as_str()) {
+                                    if let Some(current) = stack.last() {
+                                        *var_name = current.clone();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for &child in &tree[idx] {
+            self.rename(function, child, stacks, counter, tree);
+        }
+
+        for (var, count) in pushed {
+            let stack = stacks.get_mut(&var).unwrap();
+            for _ in 0..count {
+                stack.pop();
+            }
+        }
+    }
+}
+
+fn get_dest(prim: &mut Primitive) -> Option<&mut String> {
+    match prim {
+        Primitive::Assign { dest, .. } => Some(dest),
+        Primitive::BinOp { dest, .. } => Some(dest),
+        Primitive::Call { dest, .. } => Some(dest),
+        Primitive::Phi { dest, .. } => Some(dest),
+        Primitive::Alloc { dest, .. } => Some(dest),
+        Primitive::GetElt { dest, .. } => Some(dest),
+        Primitive::Load { dest, .. } => Some(dest),
+        _ => None,
+    }
+}
+
+// need to rename control transfers too because branch and return create usages
+fn rename_control_transfer(transfer: &mut ControlTransfer, stacks: &HashMap<String, Vec<String>>) {
+    match transfer {
+        ControlTransfer::Branch { cond, ..} => {
+            rename_value(cond, stacks);
+        }
+        ControlTransfer::Return { val } => {
+            rename_value(val, stacks);
+        }
+        ControlTransfer::Jump { .. } => {}
+        ControlTransfer::Fail { .. } => {}
+    }
+}
+
+fn rename_uses(prim: &mut Primitive, stacks: &HashMap<String, Vec<String>>) {
+    match prim {
+
+        Primitive::Assign { value, .. } => {
+            rename_value(value, stacks);
+        }
+
+        Primitive::BinOp { lhs, rhs, .. } => {
+            rename_value(lhs, stacks);
+            rename_value(rhs, stacks);
+        }
+
+        Primitive::Call { func, receiver, args, .. } => {
+            rename_value(func, stacks);
+            rename_value(receiver, stacks);
+            for arg in args {
+                rename_value(arg, stacks);
+            }
+        }
+
+        Primitive::Print { val } => {
+            rename_value(val, stacks);
+        }
+
+        Primitive::GetElt { arr, idx, .. } => {
+            rename_value(arr, stacks);
+            rename_value(idx, stacks);
+        }
+
+        Primitive::SetElt { arr, idx, val } => {
+            rename_value(arr, stacks);
+            rename_value(idx, stacks);
+            rename_value(val, stacks);
+        }
+
+        Primitive::Load { addr, .. } => {
+            rename_value(addr, stacks);
+        }
+
+        Primitive::Store { addr, val } => {
+            rename_value(addr, stacks);
+            rename_value(val, stacks);
+        }
+
+        Primitive::Phi { .. } => { }
+
+        Primitive::Alloc { .. } => { }
+    }
+}
+
+fn rename_value(val: &mut Value, stacks: &HashMap<String, Vec<String>>) {
+    if let Value::Variable(name) = val {
+        if let Some(stack) = stacks.get(name) {
+            if let Some(current) = stack.last() {
+                *name = current.clone();
+            }
+        }
+    }
 }
