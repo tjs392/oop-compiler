@@ -367,6 +367,65 @@ impl CFG {
             }
         }
     }
+
+    // constant folding - pretty self explanatory
+    // for now just doing it in a separate pass, after ssa
+    pub fn fold_constants(&mut self, function: &mut Function) {
+        let mut changed = true;
+
+        while changed {
+            changed = false;
+            for block in &mut function.blocks {
+                for i in 0..block.primitives.len() {
+                    if let Some(folded) = Self::try_fold_constant(&block.primitives[i]) {
+                        block.primitives[i] = folded;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    fn try_fold_constant(prim: &Primitive) -> Option<Primitive> {
+        match prim {
+
+            Primitive::BinOp { dest, lhs, op, rhs } => {
+                if let (Value::Constant(left), Value::Constant(right)) = (lhs, rhs) {
+                    if let Some(result) = Self::evaluate_binop(op, *left, *right) {
+                        return Some(Primitive::Assign {
+                            dest: dest.clone(),
+                            value: Value::Constant(result),
+                        });
+                    }
+                }
+                None
+            }
+
+            _ => None
+        }
+    }
+
+    fn evaluate_binop(op: &str, left: i64, right: i64) -> Option<i64> {
+        match op {
+            "+" => Some(left.wrapping_add(right)),
+            "-" => Some(left.wrapping_sub(right)),
+            "*" => Some(left.wrapping_mul(right)),
+            "/" => {
+                if right == 0 {
+                    None
+                } else {
+                    Some(left / right)
+                }
+            }
+            "|" => Some(left | right),
+            "&" => Some(left & right),
+            "^" => Some(left ^ right),
+            "==" => Some(if left == right { 1 } else { 0 }),
+            "<" => Some(if left < right { 1 } else { 0 }),
+            ">" => Some(if left > right { 1 } else { 0 }),
+            _ => None,
+        }
+    }
 }
 
 fn get_dest(prim: &mut Primitive) -> Option<&mut String> {

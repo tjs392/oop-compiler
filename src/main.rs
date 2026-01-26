@@ -86,6 +86,7 @@ fn compile(input: String) {
     for function in &mut ir_program.functions {
         let mut cfg = CFG::new(function);
         cfg.convert_to_ssa(function);
+        cfg.fold_constants(function);
     }
 
     ir_program.print();

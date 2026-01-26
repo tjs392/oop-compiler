@@ -1,44 +1,9 @@
-class A [
-    fields x
-    method m() with locals:
-        return 0
-]
-
-main with a, b, c, i:
-
-a = 1
-b = 2
-
-if a: {
-    a = 10
-    b = 20
-} else {
-    a = 30
-    b = 40
-}
-
-print(a)
-print(b)
-
-c = 0
-if a: {
-    if b: {
-        c = 1
-    } else {
-        c = 2
-    }
-} else {
-    c = 3
-}
-print(c)
-
-i = 5
-a = 0
-while i: {
-    a = (a + i)
-    i = (i - 1)
-}
-print(a)
-print(i)
-
-print(999)
+main with x, y, z, w:
+    x = (2 + 3)
+    y = (10 * 5)
+    z = (100 / 4)
+    w = (7 - 2)
+    print(x)
+    print(y)
+    print(z)
+    print(w)

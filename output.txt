@@ -1,65 +1,21 @@
-Parsed: merge8:
-    %11 = call(, then6, %9, else7, %10)
-    jump merge5
-else7:
-    %10 = 2
-    jump merge8
-condLabel9:
-    %16 = call(, merge5, %14, whileBody10, %21)
-    %17 = call(, merge5, %15, whileBody10, %19)
-    if %16 then whileBody10 else whileMerge11
-merge5:
-    %13 = call(, merge8, %11, else4, %12)
-    print(%13)
-    %14 = 5
-    %15 = 0
-    jump condLabel9
-else4:
-    %12 = 3
-    jump merge5
-whileMerge11:
-    print(%17)
-    print(%16)
-    print(999)
-    ret 0
-then6:
-    %9 = 1
-    jump merge8
-then3:
-    if %6 then then6 else else7
-then0:
-    %2 = 10
-    %3 = 20
-    jump merge2
-whileBody10:
-    %18 = %17 + %16
-    %19 = %18
-    %20 = %16 - 1
-    %21 = %20
-    jump condLabel9
-else1:
-    %4 = 30
-    %5 = 40
-    jump merge2
-main:
-    %0 = 1
-    %1 = 2
-    if %0 then then0 else else1
-merge2:
-    %6 = call(, then0, %3, else1, %5)
-    %7 = call(, then0, %2, else1, %4)
+Parsed: main:
+    %0 = 5
+    %1 = %0
+    %2 = 50
+    %3 = %2
+    %4 = 25
+    %5 = %4
+    %6 = 5
+    %7 = %6
+    print(%1)
+    print(%3)
+    print(%5)
     print(%7)
-    print(%6)
-    %8 = 0
-    if %7 then then3 else else4
-mA(this):
     ret 0
 
 
-10
-20
-1
-15
-0
-999
+5
+50
+25
+5
 Final result: Data { val: 0 }
