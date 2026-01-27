@@ -375,9 +375,16 @@ impl CFG {
 
         while changed {
             changed = false;
+            
+            let mut const_map: HashMap<String, i64> = HashMap::new();
+            
             for block in &mut function.blocks {
                 for i in 0..block.primitives.len() {
-                    if let Some(folded) = Self::try_fold_constant(&block.primitives[i]) {
+                    if let Primitive::Assign { dest, value: Value::Constant(c) } = &block.primitives[i] {
+                        const_map.insert(dest.clone(), *c);
+                    }
+                    
+                    if let Some(folded) = Self::try_fold_constant(&block.primitives[i], &const_map) {
                         block.primitives[i] = folded;
                         changed = true;
                     }
@@ -386,12 +393,23 @@ impl CFG {
         }
     }
 
-    fn try_fold_constant(prim: &Primitive) -> Option<Primitive> {
+    fn try_fold_constant(prim: &Primitive, const_map: &HashMap<String, i64>) -> Option<Primitive> {
         match prim {
-
             Primitive::BinOp { dest, lhs, op, rhs } => {
-                if let (Value::Constant(left), Value::Constant(right)) = (lhs, rhs) {
-                    if let Some(result) = Self::evaluate_binop(op, *left, *right) {
+                let left_val = match lhs {
+                    Value::Constant(c) => Some(*c),
+                    Value::Variable(v) => const_map.get(v).copied(),
+                    _ => None,
+                };
+                
+                let right_val = match rhs {
+                    Value::Constant(c) => Some(*c),
+                    Value::Variable(v) => const_map.get(v).copied(),
+                    _ => None,
+                };
+                
+                if let (Some(left), Some(right)) = (left_val, right_val) {
+                    if let Some(result) = Self::evaluate_binop(op, left, right) {
                         return Some(Primitive::Assign {
                             dest: dest.clone(),
                             value: Value::Constant(result),
@@ -400,7 +418,6 @@ impl CFG {
                 }
                 None
             }
-
             _ => None
         }
     }

@@ -1,0 +1,30 @@
+# testing polymorphism
+
+class Dog [
+    fields dummy
+    method speak() with locals:
+        print(100)
+        return 0
+]
+
+class Cat [
+    fields dummy
+    method speak() with locals:
+        print(200)
+        return 0
+]
+
+class Vet [
+    fields dummy
+    method examine(animal) with locals:
+        _ = ^animal.speak()
+        return 0
+]
+
+main with dog, cat, vet:
+    dog = @Dog
+    cat = @Cat
+    vet = @Vet
+    
+    _ = ^vet.examine(dog)
+    _ = ^vet.examine(cat)

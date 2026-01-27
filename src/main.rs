@@ -8,7 +8,6 @@ mod ir;
 mod ir_builder;
 mod cfg;
 
-use token::{TokenType};
 use tokenizer::Tokenizer;
 use parser::Parser;
 use ir_builder::IRBuilder;
@@ -17,64 +16,26 @@ use cfg::CFG;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    if args.len() < 3 {
-        eprintln!("Usage: <comp> {{tokenize|parseExpr}} [args...]");
+    if args.len() < 2 {
+        eprintln!("Usage: ./comp [-noopt] <source_file>");
         std::process::exit(1);
     }
 
-    let input = args[2..].join(" ");
-
-    let mut tok = Tokenizer::new(input);
-
-    match args[1].as_str() {
-        "compile" => {
-            if args.len() < 3 {
-                eprintln!("Usage: <comp> compile <source_code>");
-                std::process::exit(1);
-            }
-            let input = args[2..].join(" ");
-            compile(input);
+    let (no_opt, filename) = if args[1] == "-noopt" {
+        if args.len() < 3 {
+            eprintln!("Usage: ./comp -noopt <source_file>");
+            std::process::exit(1);
         }
-
-        "tokenize" => {
-            while tok.peek().get_type() != TokenType::Eof {
-                println!("{:?}", tok.next());
-            }
-        }
-
-        "parseExpr" => {
-            let mut parser = Parser::new(tok);
-            println!("{:?}", parser.parse_expr());
-        }
-
-        "parseStmt" => {
-            let mut parser = Parser::new(tok);
-            println!("{:?}", parser.parse_statement());
-        }
-
-        "parseClass" => {
-            let mut parser = Parser::new(tok);
-            println!("{:#?}", parser.parse_class());
-        }
-
-        "parseProgram" => {
-            let mut parser = Parser::new(tok);
-            println!("{:#?}", parser.parse_program());
-        }
-
-        _ => {
-            eprintln!("Unsupported subcommand: {}", args[1]);
-        }
-        
-    }
-}
-
-fn compile(input: String) {
-    let source = if std::path::Path::new(&input).exists() {
-        std::fs::read_to_string(&input).expect(&format!("file {} does not exist", input))
+        (true, &args[2])
     } else {
-        input
+        (false, &args[1])
     };
+
+    let source = std::fs::read_to_string(filename)
+        .unwrap_or_else(|_| {
+            eprintln!("Error: Could not read file '{}'", filename);
+            std::process::exit(1);
+        });
 
     let tokenizer = Tokenizer::new(source);
     let mut parser = Parser::new(tokenizer);
@@ -86,7 +47,10 @@ fn compile(input: String) {
     for function in &mut ir_program.functions {
         let mut cfg = CFG::new(function);
         cfg.convert_to_ssa(function);
-        cfg.fold_constants(function);
+        
+        if !no_opt {
+            cfg.fold_constants(function);
+        }
     }
 
     ir_program.print();

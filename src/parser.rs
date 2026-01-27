@@ -87,7 +87,6 @@ impl Parser {
                 let mut args = Vec::<Expression>::new();
                 while self.tok.peek().get_type() != TokenType::RightParen {
                     let arg = self.parse_expr();
-                    eprintln!("Parsed arg: {:?}", arg);
                     args.push(arg);
                     
                     if self.tok.peek().get_type() == TokenType::Comma {

@@ -1,9 +1,0 @@
-main with x, y, z, w:
-    x = (2 + 3)
-    y = (10 * 5)
-    z = (100 / 4)
-    w = (7 - 2)
-    print(x)
-    print(y)
-    print(z)
-    print(w)

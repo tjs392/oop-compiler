@@ -39,10 +39,24 @@ impl Tokenizer {
             // since rust uses variable width encoding, we can do byte indexing here 
             // for O(1) opetation
             let c = self.text.as_bytes()[self.current] as char;
-            if !c.is_whitespace() {
-                break;
+            
+            if c.is_whitespace() {
+                self.current += 1;
+                continue;
             }
-            self.current += 1;
+
+            if c == '#' {
+                while self.current < self.text.len() {
+                    let ch = self.text.as_bytes()[self.current] as char;
+                    self.current += 1;
+                    if ch == '\n' {
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            break;
         }
 
         if self.current >= self.text.len() {
@@ -71,7 +85,21 @@ impl Tokenizer {
             '*' => { self.current += 1; Token::Operator('*') }
             '/' => { self.current += 1; Token::Operator('/') }
 
-            '=' => { self.current += 1; Token::Equals }
+            '<' => { self.current += 1; Token::Operator('<') }
+            '>' => { self.current += 1; Token::Operator('>') }
+
+            '=' => {
+                self.current += 1;
+
+                if self.current < self.text.len() {
+                    let next_ch = self.text.as_bytes()[self.current] as char;
+                    if next_ch == '=' {
+                        self.current += 1;
+                        return Token::Operator('=');
+                    }
+                }
+                Token::Equals
+            }
             '_' => { self.current += 1; Token::Identifier("_".to_string()) }
             
             // Tokenizing Digits
