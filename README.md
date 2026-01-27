@@ -27,9 +27,6 @@ cargo build --release
 
 ## Peephole Optimization
 
-**Optimization Implemented:** Constant Folding
-
-**Description:** 
 I implemented constant folding. This is an optimization that I do on the second pass after converting my CFG to valid SSA. I do another pass where I look for binary operations and evaluate them at compile time to fold them down to a single constant.
 
 **Example:**
