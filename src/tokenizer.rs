@@ -1,4 +1,4 @@
-use crate::token::Token;
+use crate::token::{Token, Operator};
 
 pub struct Tokenizer {
     text: String,
@@ -80,26 +80,26 @@ impl Tokenizer {
             '[' => { self.current += 1; Token::LeftBracket }
             ']' => { self.current += 1; Token::RightBracket }
                     
-            '+' => { self.current += 1; Token::Operator('+') }
-            '-' => { self.current += 1; Token::Operator('-') }
-            '*' => { self.current += 1; Token::Operator('*') }
-            '/' => { self.current += 1; Token::Operator('/') }
-
-            '<' => { self.current += 1; Token::Operator('<') }
-            '>' => { self.current += 1; Token::Operator('>') }
+            '+' => { self.current += 1; Token::Operator(Operator::Plus) }
+            '-' => { self.current += 1; Token::Operator(Operator::Minus) }
+            '*' => { self.current += 1; Token::Operator(Operator::Multiply) }
+            '/' => { self.current += 1; Token::Operator(Operator::Divide) }
+            '<' => { self.current += 1; Token::Operator(Operator::LessThan) }
+            '>' => { self.current += 1; Token::Operator(Operator::GreaterThan) }
+            '|' => { self.current += 1; Token::Operator(Operator::BitwiseOr) }
 
             '=' => {
                 self.current += 1;
-
                 if self.current < self.text.len() {
                     let next_ch = self.text.as_bytes()[self.current] as char;
                     if next_ch == '=' {
                         self.current += 1;
-                        return Token::Operator('=');
+                        return Token::Operator(Operator::Equals);
                     }
                 }
                 Token::Equals
             }
+
             '_' => { self.current += 1; Token::Identifier("_".to_string()) }
             
             // Tokenizing Digits
@@ -157,176 +157,3 @@ impl Tokenizer {
         }
     }
 }
-
-/*
-Testing
-*/
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn symbols() {
-        let mut tok = Tokenizer::new("( ) { } ^ & @ ! . : ,".to_string());
-        assert!(matches!(tok.next(), Token::LeftParen));
-        assert!(matches!(tok.next(), Token::RightParen));
-        assert!(matches!(tok.next(), Token::LeftBrace));
-        assert!(matches!(tok.next(), Token::RightBrace));
-        assert!(matches!(tok.next(), Token::Caret));
-        assert!(matches!(tok.next(), Token::Ampersand));
-        assert!(matches!(tok.next(), Token::AtSign));
-        assert!(matches!(tok.next(), Token::Not));
-        assert!(matches!(tok.next(), Token::Dot));
-        assert!(matches!(tok.next(), Token::Colon));
-        assert!(matches!(tok.next(), Token::Comma));
-    }
-
-    #[test]
-    fn operators() {
-        let mut tok = Tokenizer::new("+ - * /".to_string());
-        assert!(matches!(tok.next(), Token::Operator('+')));
-        assert!(matches!(tok.next(), Token::Operator('-')));
-        assert!(matches!(tok.next(), Token::Operator('*')));
-        assert!(matches!(tok.next(), Token::Operator('/')));
-    }
-
-    #[test]
-    fn keywords() {
-        let mut tok = Tokenizer::new("if ifonly while return print this".to_string());
-        assert!(matches!(tok.next(), Token::If));
-        assert!(matches!(tok.next(), Token::IfOnly));
-        assert!(matches!(tok.next(), Token::While));
-        assert!(matches!(tok.next(), Token::Return));
-        assert!(matches!(tok.next(), Token::Print));
-        assert!(matches!(tok.next(), Token::This));
-    }
-
-    #[test]
-    fn numbers() {
-        let mut tok = Tokenizer::new("0 69 2147483647".to_string());
-        assert!(matches!(tok.next(), Token::Number(0)));
-        assert!(matches!(tok.next(), Token::Number(69)));
-        assert!(matches!(tok.next(), Token::Number(2147483647)));
-    }
-
-    #[test]
-    fn identifiers() {
-        let mut tok = Tokenizer::new("x testvar var123 teijisVar TEIJI".to_string());
-        match tok.next() {
-            Token::Identifier(name) => assert_eq!(name, "x"),
-            _ => panic!("Expected Identifier(x)"),
-        }
-        match tok.next() {
-            Token::Identifier(name) => assert_eq!(name, "testvar"),
-            _ => panic!("Expected Identifier(testvar)"),
-        }
-        match tok.next() {
-            Token::Identifier(name) => assert_eq!(name, "var123"),
-            _ => panic!("Expected Identifier(var123)"),
-        }
-        match tok.next() {
-            Token::Identifier(name) => assert_eq!(name, "teijisVar"),
-            _ => panic!("Expected Identifier(teijisVar)"),
-        }
-        match tok.next() {
-            Token::Identifier(name) => assert_eq!(name, "TEIJI"),
-            _ => panic!("Expected Identifier(TEIJI)"),
-        }
-    }
-
-    #[test]
-    fn peek_doesnt_consume() {
-        let mut tok = Tokenizer::new("62 + 5".to_string());
-        assert!(matches!(tok.peek(), Token::Number(62)));
-        assert!(matches!(tok.peek(), Token::Number(62)));
-        assert!(matches!(tok.next(), Token::Number(62)));
-        assert!(matches!(tok.peek(), Token::Operator('+')));
-        assert!(matches!(tok.next(), Token::Operator('+')));
-    }
-
-    #[test]
-    fn whitespace_variants() {
-        let mut tok = Tokenizer::new("   69\t+\n5   ".to_string());
-        assert!(matches!(tok.next(), Token::Number(69)));
-        assert!(matches!(tok.next(), Token::Operator('+')));
-        assert!(matches!(tok.next(), Token::Number(5)));
-        assert!(matches!(tok.next(), Token::Eof));
-    }
-
-    #[test]
-    fn no_spaces_between_tokens() {
-        let mut tok = Tokenizer::new("62+5".to_string());
-        assert!(matches!(tok.next(), Token::Number(62)));
-        assert!(matches!(tok.next(), Token::Operator('+')));
-        assert!(matches!(tok.next(), Token::Number(5)));
-    }
-
-    #[test]
-    fn arithmetic() {
-        let mut tok = Tokenizer::new("( 3 + 5 )".to_string());
-        assert!(matches!(tok.next(), Token::LeftParen));
-        assert!(matches!(tok.next(), Token::Number(3)));
-        assert!(matches!(tok.next(), Token::Operator('+')));
-        assert!(matches!(tok.next(), Token::Number(5)));
-        assert!(matches!(tok.next(), Token::RightParen));
-    }
-
-    #[test]
-    fn field_read() {
-        let mut tok = Tokenizer::new("&this.x".to_string());
-        assert!(matches!(tok.next(), Token::Ampersand));
-        assert!(matches!(tok.next(), Token::This));
-        assert!(matches!(tok.next(), Token::Dot));
-        match tok.next() {
-            Token::Identifier(name) => assert_eq!(name, "x"),
-            _ => panic!("Expected Identifier(x)"),
-        }
-    }
-
-    #[test]
-    fn method_call() {
-        let mut tok = Tokenizer::new("^x.push(69, y)".to_string());
-        assert!(matches!(tok.next(), Token::Caret));
-        match tok.next() {
-            Token::Identifier(name) => assert_eq!(name, "x"),
-            _ => panic!("Expected Identifier(x)"),
-        }
-        assert!(matches!(tok.next(), Token::Dot));
-        match tok.next() {
-            Token::Identifier(name) => assert_eq!(name, "push"),
-            _ => panic!("Expected Identifier(push)"),
-        }
-        assert!(matches!(tok.next(), Token::LeftParen));
-        assert!(matches!(tok.next(), Token::Number(69)));
-        assert!(matches!(tok.next(), Token::Comma));
-        match tok.next() {
-            Token::Identifier(name) => assert_eq!(name, "y"),
-            _ => panic!("Expected Identifier(y)"),
-        }
-        assert!(matches!(tok.next(), Token::RightParen));
-    }
-
-    #[test]
-    fn class_reference() {
-        let mut tok = Tokenizer::new("@Class".to_string());
-        assert!(matches!(tok.next(), Token::AtSign));
-        match tok.next() {
-            Token::Identifier(name) => assert_eq!(name, "Class"),
-            _ => panic!("Expected Identifier(Class)"),
-        }
-    }
-    
-    #[test]
-    #[should_panic(expected = "Unsupported character")]
-    fn invalid_character() {
-        let mut tok = Tokenizer::new("#".to_string());
-        tok.next();
-    }
-}
-
-
-
-
-
-

@@ -50,7 +50,7 @@ pub enum Token {
     // number accept i64 num of course
     Number(i64),
     // operator will accept an operator character like + - / *
-    Operator(char),
+    Operator(Operator),
 
     Identifier(String),
 
@@ -77,6 +77,37 @@ pub enum Token {
     Eof,
     This,
     Equals
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Operator {
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
+    Equals,
+    LessThan,
+    GreaterThan,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+}
+
+impl std::fmt::Display for Operator {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Operator::Plus => write!(f, "+"),
+            Operator::Minus => write!(f, "-"),
+            Operator::Multiply => write!(f, "*"),
+            Operator::Divide => write!(f, "/"),
+            Operator::Equals => write!(f, "=="),
+            Operator::LessThan => write!(f, "<"),
+            Operator::GreaterThan => write!(f, ">"),
+            Operator::BitwiseAnd => write!(f, "&"),
+            Operator::BitwiseOr => write!(f, "|"),
+            Operator::BitwiseXor => write!(f, "^"),
+        }
+    }
 }
 
 impl Token {

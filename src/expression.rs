@@ -1,3 +1,5 @@
+use crate::token::Operator;
+
 #[derive(Debug, Clone)]
 pub enum Expression {
     ThisExpr,
@@ -6,7 +8,7 @@ pub enum Expression {
         // here, Box is a heap pointer with size 8 bytes
         // Need this here for recursie types to avoid infinite size at compile time
         lhs: Box<Expression>,
-        op: char,
+        op: Operator,
         rhs: Box<Expression>,
     },
     MethodCall {
