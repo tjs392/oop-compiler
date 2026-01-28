@@ -1,6 +1,5 @@
 ## Requirements
 - Rust 
-- Cargo (comes with Rust)
 
 ## Building
 ```bash
