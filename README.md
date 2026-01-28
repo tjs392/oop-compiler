@@ -1,6 +1,3 @@
-# Compiler
-**Teiji Schoyen**
-
 ## Requirements
 - Rust 
 - Cargo (comes with Rust)
