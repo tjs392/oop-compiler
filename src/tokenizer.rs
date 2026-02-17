@@ -71,7 +71,19 @@ impl Tokenizer {
             '{' => { self.current += 1; Token::LeftBrace }
             '}' => { self.current += 1; Token::RightBrace }
             ':' => { self.current += 1; Token::Colon }
-            '!' => { self.current += 1; Token::Not }
+            
+            '!' => {
+                self.current += 1;
+                if self.current < self.text.len() {
+                    let next_ch = self.text.as_bytes()[self.current] as char;
+                    if next_ch == '=' {
+                        self.current += 1;
+                        return Token::Operator(Operator::NotEquals);
+                    }
+                }
+                Token::Not
+            }
+            
             '@' => { self.current += 1; Token::AtSign }
             '^' => { self.current += 1; Token::Caret }
             '&' => { self.current += 1; Token::Ampersand }

@@ -1,0 +1,64 @@
+data:
+global array vtblA: { mA }
+global array fieldsA: { 2, 0 }
+global array vtblB: { mB }
+global array fieldsB: { 0, 2 }
+code:
+
+mA(this):
+  %1 = %this & 1
+  if %1 then badptr else l2
+l2:
+  %2 = %this + 8
+  %3 = load(%2)
+  %4 = getelt(%3, 0)
+
+  if %4 then getx else badfield
+getx:
+  %5 = getelt(%this, %4)
+  ret %5
+badptr:
+  fail NotAPointer
+badfield:
+  fail NoSuchField
+
+mB(this):
+  ret 0
+
+main:
+
+  %x0 = alloc(3)
+  store(%x0, @vtblA)
+  %1 = %x0 + 8
+  store(%1, @fieldsA)
+
+
+  %2 = %x0 & 1
+  if %2 then badptr2 else firstStoreX
+firstStoreX:
+  %3 = %x0 + 8
+  %4 = load(%3)
+  %5 = getelt(%4, 0)
+  if %5 then firstStoreXWorks else badfield2
+firstStoreXWorks:
+  setelt(%x0, %5, 3)
+
+
+  %7 = %x0 & 1
+  if %7 then badptr3 else l1
+l1:
+  %8 = load(%x0)
+  %9 = getelt(%8, 0)
+  if %9 then callAndPrint else badmethod
+callAndPrint:
+  %10 = call(%9, %x0)
+  print(%10)
+  ret %10
+badptr2:
+  fail NotAPointer
+badfield2:
+  fail NoSuchField
+badptr3:
+  fail NotAPointer
+badmethod:
+  fail NoSuchMethod

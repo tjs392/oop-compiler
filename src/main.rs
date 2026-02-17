@@ -16,24 +16,44 @@ use cfg::CFG;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    if args.len() < 2 {
-        eprintln!("Usage: ./comp [-noopt] <source_file>");
-        std::process::exit(1);
+    let mut use_ssa = true;
+    let mut use_vn = true;
+    let mut use_fold = true;
+    let mut filename: Option<&String> = None;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--ssa"     => use_ssa = true,
+            "--no-ssa"  => use_ssa = false,
+            "--vn"      => use_vn = true,
+            "--no-vn"   => use_vn = false,
+            "--fold"    => use_fold = true,
+            "--no-fold" => use_fold = false,
+            arg if arg.starts_with("--") => {
+                eprintln!("Unknown flag: {}", arg);
+                eprintln!("Usage: ./comp [--ssa|--no-ssa] [--vn|--no-vn] [--fold|--no-fold] <source_file>");
+                std::process::exit(1);
+            }
+            _ => {
+                if filename.is_some() {
+                    eprintln!("Error: multiple filenames provided");
+                    std::process::exit(1);
+                }
+                filename = Some(&args[i]);
+            }
+        }
+        i += 1;
     }
 
-    let (no_opt, filename) = if args[1] == "-noopt" {
-        if args.len() < 3 {
-            eprintln!("Usage: ./comp -noopt <source_file>");
-            std::process::exit(1);
-        }
-        (true, &args[2])
-    } else {
-        (false, &args[1])
-    };
+    let filename = filename.unwrap_or_else(|| {
+        eprintln!("Usage: ./comp [--ssa|--no-ssa] [--vn|--no-vn] [--fold|--no-fold] <source_file>");
+        std::process::exit(1);
+    });
 
     let source = std::fs::read_to_string(filename)
         .unwrap_or_else(|_| {
-            eprintln!("Error: Could not read file '{}'", filename);
+            eprintln!("Error: could not read file '{}'", filename);
             std::process::exit(1);
         });
 
@@ -46,9 +66,16 @@ fn main() {
 
     for function in &mut ir_program.functions {
         let mut cfg = CFG::new(function);
-        cfg.convert_to_ssa(function);
-        
-        if !no_opt {
+
+        if use_ssa {
+            cfg.convert_to_ssa(function);
+        }
+
+        if use_vn {
+            cfg.value_numbering(function);
+        }
+
+        if use_fold {
             cfg.fold_constants(function);
         }
     }

@@ -1,0 +1,9 @@
+main with a, b, c, d, e, f:
+    a = 5
+    b = 10
+    c = (a + b)
+    d = (a + b)
+    e = (c + d)
+    f = (c + d)
+    print(e)
+    print(f)

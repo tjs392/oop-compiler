@@ -202,18 +202,26 @@ impl Program {
             },
 
             Primitive::Call { dest, func, receiver, args } => {
-                let args_string: String = 
-                    args.iter()
-                        .map(|a| self.format_value(a))
-                        .collect::<Vec<String>>()
-                        .join(", ");
+                if args.is_empty() {
+                    format!("%{} = call({}, {})",
+                        dest,
+                        self.format_value(func),
+                        self.format_value(receiver),
+                    )
+                } else {
+                    let args_string: String =
+                        args.iter()
+                            .map(|a| self.format_value(a))
+                            .collect::<Vec<String>>()
+                            .join(", ");
 
-                format!("%{} = call({}, {}, {})", 
-                    dest, 
-                    self.format_value(func), 
-                    self.format_value(receiver), 
-                    args_string
-                )
+                    format!("%{} = call({}, {}, {})",
+                        dest,
+                        self.format_value(func),
+                        self.format_value(receiver),
+                        args_string,
+                    )
+                }
             },
 
             Primitive::Phi { dest, args } => {

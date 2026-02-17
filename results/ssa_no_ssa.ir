@@ -1,0 +1,42 @@
+data:
+
+code:
+
+main:
+  %a = 1
+  %b = 1
+  %c = 1
+  %d = 1
+  %e = 1
+  %x = 1
+  %a = 3
+  %b = 5
+  %c = 7
+  %d = 9
+  %e = 11
+  %x = 1
+  %untaggedCond0 = 3 / 2
+  if %untaggedCond0 then then0 else else1
+
+then0:
+  %x = 199
+  jump merge2
+
+else1:
+  %x = 1
+  jump merge2
+
+merge2:
+  %untagged1 = %x / 2
+  print(%untagged1)
+  %untagged2 = %a / 2
+  print(%untagged2)
+  %untagged3 = %b / 2
+  print(%untagged3)
+  %untagged4 = %c / 2
+  print(%untagged4)
+  %untagged5 = %d / 2
+  print(%untagged5)
+  %untagged6 = %e / 2
+  print(%untagged6)
+  ret 0

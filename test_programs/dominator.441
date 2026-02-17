@@ -1,0 +1,27 @@
+# dominator test
+# Expected output: 10, 20, 1, 2, 3
+# should produce 3 phis for the merges
+#   phi for x at merge after first ifelse
+#   pgi for y at merge after second one
+#   and then one for i at while loop
+
+main with x, y, i:
+    if 1: {
+        x = 10
+    } else {
+        x = 99
+    }
+    print(x)
+
+    if 0: {
+        y = 99
+    } else {
+        y = 20
+    }
+    print(y)
+
+    i = 1
+    while (i < 4): {
+        print(i)
+        i = (i + 1)
+    }

@@ -91,6 +91,7 @@ pub enum Operator {
     BitwiseAnd,
     BitwiseOr,
     BitwiseXor,
+    NotEquals,
 }
 
 impl std::fmt::Display for Operator {
@@ -106,6 +107,7 @@ impl std::fmt::Display for Operator {
             Operator::BitwiseAnd => write!(f, "&"),
             Operator::BitwiseOr => write!(f, "|"),
             Operator::BitwiseXor => write!(f, "^"),
+            Operator::NotEquals => write!(f, "!="),
         }
     }
 }

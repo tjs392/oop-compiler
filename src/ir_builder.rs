@@ -2,6 +2,7 @@ use crate::expression::Expression;
 use crate::statement::Statement;
 use crate::ast;
 use crate::ir::{self, BasicBlock, Function, Primitive, Value, ControlTransfer, GlobalArray};
+use crate::token::Operator;
 use std::collections::HashMap;
 
 pub struct IRBuilder {
@@ -250,26 +251,194 @@ impl IRBuilder {
     fn gen_expression(&mut self, expression: &Expression) -> Value {
         match expression {
 
+            // if its a contant, tag the leftmost bit with 1
             Expression::Constant(n) => {
-                Value::Constant(*n)
+                Value::Constant(2 * (*n) + 1)
             }
 
             Expression::Variable(name) => {
                 Value::Variable(name.clone())
             }
 
+            // for binop we need to check if it's pointer arithmetic or regular
+            // arithmetic
+            // so we untag both left and right sides and do math then tag them back
             Expression::Binop { lhs, op, rhs } => {
                 let left = self.gen_expression(lhs);
                 let right = self.gen_expression(rhs);
 
-                let result = self.gen_unique_variable("result");
+                if *op == Operator::Equals {
+                    let raw_result = self.gen_unique_variable("rawResult");
+                    self.push_instruction(Primitive::BinOp {
+                        dest: raw_result.clone(),
+                        lhs: left,
+                        op: op.to_string(),
+                        rhs: right,
+                    });
 
-                self.push_instruction(Primitive::BinOp { 
-                    dest: result.clone(), 
-                    lhs: left, 
-                    op: op.to_string(), 
-                    rhs: right
+                    // tag the result, this will for 0 or 1
+                    let tagged_result = self.gen_unique_variable("tagged_result");
+                    self.push_instruction(Primitive::BinOp {
+                        dest: tagged_result.clone(),
+                        lhs: Value::Variable(raw_result),
+                        op: "*".to_string(),
+                        rhs: Value::Constant(2),
+                    });
+
+                    let result = self.gen_unique_variable("result");
+                    self.push_instruction(Primitive::BinOp {
+                        dest: result.clone(),
+                        lhs: Value::Variable(tagged_result),
+                        op: "+".to_string(),
+                        rhs: Value::Constant(1),
+                    });
+
+                    return Value::Variable(result);
+                }
+
+                if *op == Operator::NotEquals {
+                    // the ir doesnt have !=, so just do two instructions with ! and ==
+                    let eq_result = self.gen_unique_variable("eqResult");
+                    self.push_instruction(Primitive::BinOp {
+                        dest: eq_result.clone(),
+                        lhs: left,
+                        op: "==".to_string(),
+                        rhs: right,
+                    });
+
+                    // you can flip an equality using xor
+                    let flipped = self.gen_unique_variable("flipped");
+                    self.push_instruction(Primitive::BinOp {
+                        dest: flipped.clone(),
+                        lhs: Value::Variable(eq_result),
+                        op: "^".to_string(),
+                        rhs: Value::Constant(1),
+                    });
+
+                    let tagged_result = self.gen_unique_variable("tagged_result");
+                    self.push_instruction(Primitive::BinOp {
+                        dest: tagged_result.clone(),
+                        lhs: Value::Variable(flipped),
+                        op: "*".to_string(),
+                        rhs: Value::Constant(2),
+                    });
+
+                    let result = self.gen_unique_variable("result");
+                    self.push_instruction(Primitive::BinOp {
+                        dest: result.clone(),
+                        lhs: Value::Variable(tagged_result),
+                        op: "+".to_string(),
+                        rhs: Value::Constant(1),
+                    });
+
+                    return Value::Variable(result);
+                }
+
+                // tag checking
+                // just do left & 1 
+                let left_tag = self.gen_unique_variable("numTag");
+                self.push_instruction(Primitive::BinOp {
+                    dest: left_tag.clone(),
+                    lhs: left.clone(),
+                    op: "&".to_string(),
+                    rhs: Value::Constant(1),
                 });
+                
+
+                let bad_num_label = self.gen_unique_label("badnum");
+                let check_right_label = self.gen_unique_label("checkRight");
+                
+                // badnum err if not tagged
+                self.finish_block(
+                    ControlTransfer::Branch {
+                        cond: Value::Variable(left_tag),
+                        then_lab: check_right_label.clone(),
+                        else_lab: bad_num_label.clone(),
+                    },
+                    check_right_label.clone(),
+                );
+                
+                // now checkright tag and do the same thing as left
+                let right_tag = self.gen_unique_variable("numTag");
+                self.push_instruction(Primitive::BinOp {
+                    dest: right_tag.clone(),
+                    lhs: right.clone(),
+                    op: "&".to_string(),
+                    rhs: Value::Constant(1),
+                });
+
+                let do_math_label = self.gen_unique_label("doMath");
+                let bad_num_label2 = self.gen_unique_label("badnum");
+
+                self.finish_block(
+                    ControlTransfer::Branch {
+                        cond: Value::Variable(right_tag),
+                        then_lab: do_math_label.clone(),
+                        else_lab: bad_num_label2.clone(),
+                    },
+                    do_math_label.clone(),
+                );
+
+                // now both of them are tagged with 1, we can shift right to get the raw num
+                // num >> 1 is the same as num / 2
+                let left_untagged = self.gen_unique_variable("untagged");
+                self.push_instruction(Primitive::BinOp {
+                    dest: left_untagged.clone(),
+                    lhs: left,
+                    op: "/".to_string(),
+                    rhs: Value::Constant(2),
+                });
+
+                let right_untagged = self.gen_unique_variable("untagged");
+                self.push_instruction(Primitive::BinOp {
+                    dest: right_untagged.clone(),
+                    lhs: right,
+                    op: "/".to_string(),
+                    rhs: Value::Constant(2),
+                });
+
+                // do da maf and get raw res
+                let raw_result = self.gen_unique_variable("rawResult");
+                self.push_instruction(Primitive::BinOp {
+                    dest: raw_result.clone(),
+                    lhs: Value::Variable(left_untagged),
+                    op: op.to_string(),
+                    rhs: Value::Variable(right_untagged),
+                });
+
+                // re tag the result num
+                let tagged_result = self.gen_unique_variable("tagged_result");
+                self.push_instruction(Primitive::BinOp {
+                    dest: tagged_result.clone(),
+                    lhs: Value::Variable(raw_result),
+                    op: "*".to_string(),
+                    rhs: Value::Constant(2),
+                });
+
+                let result = self.gen_unique_variable("result");
+                self.push_instruction(Primitive::BinOp {
+                    dest: result.clone(),
+                    lhs: Value::Variable(tagged_result),
+                    op: "+".to_string(),
+                    rhs: Value::Constant(1),
+                });
+
+                // hold fails
+                let final_label = self.gen_unique_label("final");
+                self.finish_block(
+                    ControlTransfer::Jump { target: final_label.clone() },
+                    bad_num_label.clone(),
+                );
+
+                self.finish_block(
+                    ControlTransfer::Fail { message: "NotANumber".to_string() },
+                    bad_num_label2.clone(),
+                );
+
+                self.finish_block(
+                    ControlTransfer::Fail { message: "NotANumber".to_string() },
+                    final_label.clone(),
+                );
 
                 Value::Variable(result)
             }
@@ -668,10 +837,19 @@ impl IRBuilder {
                 self.gen_expression(expr);
             }
 
+            // gotta untag before prints
             Statement::Print(expression) => {
                 let val = self.gen_expression(expression);
 
-                self.push_instruction(Primitive::Print { val });
+                let untagged = self.gen_unique_variable("untagged");
+                self.push_instruction(Primitive::BinOp {
+                    dest: untagged.clone(),
+                    lhs: val,
+                    op: "/".to_string(),
+                    rhs: Value::Constant(2),
+                });
+
+                self.push_instruction(Primitive::Print { val: Value::Variable(untagged) });
             }
 
             Statement::Return(expression) => {
@@ -722,13 +900,23 @@ impl IRBuilder {
                         
                 */
                 let condition = self.gen_expression(condition);
+
+                // gotta untag condition
+                let untagged_cond = self.gen_unique_variable("untaggedCond");
+                self.push_instruction(Primitive::BinOp {
+                    dest: untagged_cond.clone(),
+                    lhs: condition,
+                    op: "/".to_string(),
+                    rhs: Value::Constant(2),
+                });
+
                 let then_label = self.gen_unique_label("then");
                 let else_label = self.gen_unique_label("else");
                 let merge_label = self.gen_unique_label("merge");
 
                 self.finish_block(
                     ControlTransfer::Branch { 
-                        cond: condition, 
+                        cond: Value::Variable(untagged_cond),
                         then_lab: then_label.clone(), 
                         else_lab: else_label.clone(), 
                     },
@@ -768,9 +956,18 @@ impl IRBuilder {
                 let then_label = self.gen_unique_label("then");
                 let merge_label = self.gen_unique_label("merge");
                 let condition = self.gen_expression(condition);
+
+                let untagged_cond = self.gen_unique_variable("untaggedCond");
+                self.push_instruction(Primitive::BinOp {
+                    dest: untagged_cond.clone(),
+                    lhs: condition,
+                    op: "/".to_string(),
+                    rhs: Value::Constant(2),
+                });
+
                 self.finish_block(
                     ControlTransfer::Branch { 
-                        cond: condition, 
+                        cond: Value::Variable(untagged_cond),
                         then_lab: then_label.clone(), 
                         else_lab: merge_label.clone(),
                     },
@@ -803,9 +1000,18 @@ impl IRBuilder {
                 );
 
                 let cond_val = self.gen_expression(condition);
+
+                let untagged_cond = self.gen_unique_variable("untaggedCond");
+                self.push_instruction(Primitive::BinOp {
+                    dest: untagged_cond.clone(),
+                    lhs: cond_val,
+                    op: "/".to_string(),
+                    rhs: Value::Constant(2),
+                });
+
                 self.finish_block(
                     ControlTransfer::Branch {
-                        cond: cond_val,
+                        cond: Value::Variable(untagged_cond),
                         then_lab: body_label.clone(),
                         else_lab: merge_label.clone(),
                     },
@@ -867,6 +1073,14 @@ impl IRBuilder {
         self.current_function_blocks = vec![];
         self.current_block_has_explicit_return = false;
 
+        // initialize the locals to tagged 0s
+        for local in &method.locals {
+            self.push_instruction(Primitive::Assign {
+                dest: local.clone(),
+                value: Value::Constant(1),
+            });
+        }
+
         for statement in &method.body {
             self.gen_statement(statement);
         }
@@ -891,6 +1105,14 @@ impl IRBuilder {
         };
         self.current_function_blocks = vec![];
         self.current_block_has_explicit_return = false;
+
+        // must initialize main locals, just make them tagged 0
+        for local in &program.main_locals {
+            self.push_instruction(Primitive::Assign {
+                dest: local.clone(),
+                value: Value::Constant(1),
+            });
+        }
 
         for statement in &program.main_body {
             self.gen_statement(statement);

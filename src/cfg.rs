@@ -443,6 +443,112 @@ impl CFG {
             _ => None,
         }
     }
+
+    pub fn value_numbering(&mut self, function: &mut Function) {
+        for block in &mut function.blocks {
+            // we can keep a map of all equal expressions to value numbers
+            let mut expr_to_valnum: HashMap<(String, usize, usize), usize> = HashMap::new();
+
+            // straightforward, so we can get the valnum for vars
+            let mut var_to_valnum: HashMap<String, usize> = HashMap::new();
+            let mut valnum_to_var: HashMap<usize, String> = HashMap::new();
+
+            // hold constants now
+            let mut const_to_valnum: HashMap<i64, usize> = HashMap::new();
+
+            // tracker for valnums
+            let mut valnum_count: usize = 0;
+
+            for i in 0..block.primitives.len() {
+                match &block.primitives[i] {
+                    Primitive::BinOp { dest, lhs, op, rhs } => {
+                        let lhs_vn = Self::get_valnum(lhs, &mut var_to_valnum, &mut const_to_valnum, &mut valnum_to_var, &mut valnum_count);
+                        let rhs_vn = Self::get_valnum(rhs, &mut var_to_valnum, &mut const_to_valnum, &mut valnum_to_var, &mut valnum_count);
+
+                        let expr_key = (op.clone(), lhs_vn, rhs_vn);
+                        
+                        if let Some(&existing_vn) = expr_to_valnum.get(&expr_key) {
+                            let var = valnum_to_var.get(&existing_vn).unwrap().clone();
+                            let dest = dest.clone();
+                            var_to_valnum.insert(dest.clone(), existing_vn);
+
+                            block.primitives[i] = Primitive::Assign {
+                                dest,
+                                value: Value::Variable(var),
+                            };
+                        } else {
+                            let vn = valnum_count;
+                            valnum_count += 1;
+                            expr_to_valnum.insert(expr_key, vn);
+                            var_to_valnum.insert(dest.clone(), vn);
+                            valnum_to_var.insert(vn, dest.clone());
+                        }
+                    }
+
+                    Primitive::Assign { dest, value } => {
+                        let vn = Self::get_valnum(value, &mut var_to_valnum, &mut const_to_valnum, &mut valnum_to_var, &mut valnum_count);
+                        var_to_valnum.insert(dest.clone(), vn);
+                        if !valnum_to_var.contains_key(&vn) {
+                            valnum_to_var.insert(vn, dest.clone());
+                        }
+                    }
+
+                    Primitive::Load { dest, .. } |
+                    Primitive::Call { dest, .. } |
+                    Primitive::Alloc { dest, .. } |
+                    Primitive::GetElt { dest, .. } |
+                    Primitive::Phi { dest, .. } => {
+                        let vn = valnum_count;
+                        valnum_count += 1;
+                        var_to_valnum.insert(dest.clone(), vn);
+                        valnum_to_var.insert(vn, dest.clone());
+                    }
+
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    fn get_valnum(val: &Value, var_to_valnum: &mut HashMap<String, usize>, const_to_valnum: &mut HashMap<i64, usize>, valnum_to_var: &mut HashMap<usize, String>, valnum_count: &mut usize) -> usize {
+
+        match val {
+            Value::Variable(n) => {
+                if let Some(&valnum) = var_to_valnum.get(n) {
+                    valnum
+                } else {
+                    let valnum = *valnum_count;
+                    var_to_valnum.insert(n.clone(), valnum);
+                    valnum_to_var.insert(valnum, n.clone());
+                    valnum
+                }
+            }
+
+            Value::Constant(c) => {
+                if let Some(&valnum) = const_to_valnum.get(c) {
+                    valnum
+                } else {
+                    let valnum = *valnum_count;
+                    *valnum_count += 1;
+                    const_to_valnum.insert(*c, valnum);
+                    valnum
+                }
+            }
+
+            Value::Global(name) => {
+                if let Some(&valnum) = var_to_valnum.get(name) {
+                    valnum
+                } else {
+                    let valnum = *valnum_count;
+                    *valnum_count += 1;
+                    var_to_valnum.insert(name.clone(), valnum);
+                    valnum_to_var.insert(valnum, name.clone());
+                    valnum
+                }
+            }
+
+        }
+    }
 }
 
 fn get_dest(prim: &mut Primitive) -> Option<&mut String> {
