@@ -124,8 +124,27 @@ impl IRBuilder {
             look up x in global_field_ids -> get global id (say in this example it returns 1,)
             generate a getelt instruction "getelt(field_map_addr, 1)"
         */
+
+        // first pass: need to assign globally unique ids to every field and method
+        //              across each class. this is because at runtime, any object
+        //              could be passed where another is expected due to polymorphism)
+        //              so each class's field/vtable arrays must be the same size
+        //              and use the same indicies for the same name
+
+        /* 
+        C;ass A layout:  [vtable_ptr, field_map_ptr, x_value]
+                          slot 0      slot 1         slot 2
+
+        Class B layout:  [vtable_ptr, field_map_ptr, x_value]  
+                           slot 0      slot 1         slot 2
+
+        fieldsA: { 2 } = "field with global ID 0 is at slot 2 in an A object"
+        fieldsB: { 2 } = "field with global ID 0 is at slot 2 in a B object"
+         */
         let mut next_field_id = 0;
         let mut next_method_id = 0;
+
+        // THIS IS WHAT ALOWS THE POLYMORPHISM
         for class in &program.classes {
             for field in &class.fields {
                 if !self.global_field_ids.contains_key(field) {
@@ -145,17 +164,25 @@ impl IRBuilder {
         let total_fields = self.global_field_ids.len();
         let total_methods = self.global_method_ids.len();
 
+        // second pass : build each class's vtable and field offset arrays globally
+        //               and then store than metadata for codegen
         for class in &program.classes {
+            // field_name -> slot offset within object
             let mut field_map = HashMap::new();
             for (i, field) in class.fields.iter().enumerate() {
                 field_map.insert(field.clone(), 2 + i);
             }
 
+            // method name -> index within the class's method list
             let mut vtable_map = HashMap::new();
             for (i, method) in class.methods.iter().enumerate() {
                 vtable_map.insert(method.name.clone(), i);
             }
 
+            // size = total_methods across all classes
+            // "0" means the class doesnt implement that method
+            // for methods this class does implement, stor the ir func name
+            // which the urntime will evaluate as a function pointer
             let mut vtable_vals: Vec<String> = vec!["0".to_string(); total_methods];
             for method in &class.methods {
                 let global_id = *self.global_method_ids.get(&method.name).unwrap();

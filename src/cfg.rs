@@ -85,34 +85,63 @@ impl CFG {
 
         self.rename(function, self.entry, &mut stacks, &mut counter, &tree);
     }
+
+
     // dom(block) = { block } U { & dom(pred) } for all pred in pred(block) }
+    // algorithm is:
+    // initialize the entry block's dominatr set to just itself
+    // initialize every other block's dominator set to all blocks
+    // iteration:
+    //              for each block, intersect all predecessor dominator sets then add block itself
+    //              repeat until we get fixed point convergence
     fn compute_dominator_sets(&mut self) {
+        // initlize the empty domoinator set for each block
         let mut dominator_sets: Vec<HashSet<usize>> = vec![HashSet::new(); self.num_blocks];
 
+        // entry block only dominates itself
         dominator_sets[0].insert(0);
+
+        // every non entry block's dominator set is just all the blocks, this is just the initial assumption
+        // the iteration will shrink the sets down with the algo above
+        // this prevents any dominator information loss
         let all_blocks: HashSet<usize> = (0..self.num_blocks).collect();
         for idx in 1..self.num_blocks {
             dominator_sets[idx] = all_blocks.clone();
         }
 
+        // fixed point iter: just keep going until we dont see a change
+        // intersection only removes elements it does not grow a set, so we are 
+        // guaranteed to shrink and converge :D
         let mut changed = true;
         while changed {
             changed = false;
 
+            // always gotta start at idx 1 to skip the entry block
             for idx in 1..self.num_blocks {
                 let preds = &self.predecessors[idx];
 
+                // if a block's preds is empty, then it is unreachable dead code. 
+                // idk how this could appear anyway but just check
                 if preds.is_empty() {
                     continue;
                 }
 
+                // new dom is the dominator of the first predecessor
                 let mut new_dom = dominator_sets[preds[0]].clone();
+
+                // interesect this with each of the other predecessor's dominator sets
+                // this is very important cause a block only dominates another block if
+                //      that said block dominates ALL predecessors of the given block
+                // basically, every path to the block goes through the predecessor, then it DOMINATES
                 for &pred in &preds[1..] {
                     new_dom = new_dom.intersection(&dominator_sets[pred]).copied().collect();
                 }
 
+                // insert itself cause it dominates itself o.o
                 new_dom.insert(idx);
-
+                
+                // this is the fixed point iteration check, if it changed keep going
+                // this check on convergence
                 if new_dom != dominator_sets[idx] {
                     dominator_sets[idx] = new_dom;
                     changed = true;
@@ -162,17 +191,27 @@ impl CFG {
                     runner := idom(runner)
     */
     fn compute_dominance_frontiers(&self) -> Vec<HashSet<usize>> {
+        // first immediate dominators
+        // this is the closest strict dominator
+        // the last block that must be visited on every entry into the block
         let immediate_dominators = self.compute_immediate_dominators();
         let mut dominance_fronters: Vec<HashSet<usize>> = vec![HashSet::new(); self.num_blocks];
 
         for idx in 0..self.num_blocks {
 
+            // i do this check because we only are about the join points, so if a block only has like 
+            // 1 predecessor, why do we even care because the phi would be useless
             if self.predecessors[idx].len() >= 2 {
                 for &pred in &self.predecessors[idx] {
+
+                    // walk up the dominator tree from the pred away from the join point
+                    // every block does not strictly dominate, but does have a path to the block
+                    // thats a dominance frontier
                     let mut runner = pred;
                     while Some(runner) != immediate_dominators[idx] {
                         dominance_fronters[runner].insert(idx);
 
+                        // this only stops on the entry block
                         if let Some(immediate_dominator) = immediate_dominators[runner] {
                             runner = immediate_dominator;
                         } else {
@@ -222,7 +261,13 @@ impl CFG {
         assignments
     }
 
+    // algorithm:
+    //      first compute the dominance frontiers of ebvery block
+    //      the dominance frontier is just the set of block ]s where the block's dominance ends
+    //      ie blocks that the block does not strictly dominate
+    //      but have a predecessor dominated by the block, these are the join paths
     fn insert_phi_functions(&mut self, function: &mut Function) {
+
         let dominance_frontiers = self.compute_dominance_frontiers();
 
         // for example: x is assigned in blocks {0, 2, 3}
@@ -299,8 +344,9 @@ impl CFG {
         tree
     }
 
-    // param counters tracks how many version of the variable have been created
-    // param "stacks" is a stack of each variable "rename" need this because the algorithm pushes the variable rename after backtracking the dominaance tree
+    // algorithm:
+    // backtrack rename variables to ssa form by walking the dom tree
+    // stacks: for each original var name, a stack of ssa version names, the top ppof the stack is always the most recent def visible. at the current point i the odminator tree
     fn rename(&mut self, 
                 function: &mut Function, 
                 idx: usize, 
@@ -308,6 +354,9 @@ impl CFG {
                 counter: &mut usize,
                 tree: &Vec<Vec<usize>>) {
         
+        // this is for backtracking
+        // we need to track how mny versions we push onto each variable's stack in the current block
+        // so we can pop the right number when backtracking to restore stack
         let mut pushed: HashMap<String, usize> = HashMap::new();
 
         let block = &mut function.blocks[idx];
@@ -336,14 +385,25 @@ impl CFG {
         let successors = self.successors[idx].clone();
 
         // fill phi arguments
+        // each phi has one argument per pred
+        // can find the argument slot that corresponds to this block
+        // and fill it with the current top of the stack
+        // the top po fthe stack is just the most recent variable
         for succ_idx in successors {
             let succ_block = &mut function.blocks[succ_idx];
 
             for primitive in &mut succ_block.primitives {
+                // only care abt phi funcs
+                // phis are always at the beginning of a block
                 if let Primitive::Phi { args, .. } = primitive {
+                    
+                    // every phi is (label, value) pair
+                    //  ex: x = phi(then5, x, else6, x) where then5 and else6 are predecessor labels
                     for (label, val) in args {
                         if label == &this_label {
                             if let Value::Variable(var_name) = val {
+
+                                // look up original variable name, and replace it with the current ssa version
                                 if let Some(stack) = stacks.get(var_name.as_str()) {
                                     if let Some(current) = stack.last() {
                                         *var_name = current.clone();
@@ -356,6 +416,7 @@ impl CFG {
             }
         }
 
+        // do children then pop when done w children
         for &child in &tree[idx] {
             self.rename(function, child, stacks, counter, tree);
         }
@@ -444,15 +505,23 @@ impl CFG {
         }
     }
 
+    // value numbering does redundant computation elimination
+    // ex:      %a = %x + %y
+    //          %b = %x + %y
+    //  becomes %b = %a
     pub fn value_numbering(&mut self, function: &mut Function) {
+
+        // just doing vlaue numbering per basic block
         for block in &mut function.blocks {
             // we can keep a map of all equal expressions to value numbers
             let mut expr_to_valnum: HashMap<(String, usize, usize), usize> = HashMap::new();
 
             // straightforward, so we can get the valnum for vars
+            // variable name -> its value number
             let mut var_to_valnum: HashMap<String, usize> = HashMap::new();
+            // value number -> variable that computed it
             let mut valnum_to_var: HashMap<usize, String> = HashMap::new();
-
+            
             // hold constants now
             let mut const_to_valnum: HashMap<i64, usize> = HashMap::new();
 
@@ -462,16 +531,24 @@ impl CFG {
             for i in 0..block.primitives.len() {
                 match &block.primitives[i] {
                     Primitive::BinOp { dest, lhs, op, rhs } => {
+                        // get val nums for both operands, if we've seen
+                        // say %x before and it has val num 3, then lhs_vn = 3
                         let lhs_vn = Self::get_valnum(lhs, &mut var_to_valnum, &mut const_to_valnum, &mut valnum_to_var, &mut valnum_count);
                         let rhs_vn = Self::get_valnum(rhs, &mut var_to_valnum, &mut const_to_valnum, &mut valnum_to_var, &mut valnum_count);
 
+                        // expression is identified by (operator, lhs_valmium, rhsvalnum)
+                        // two expression are equal if they do the same op on 
+                        // operands w/ the same valnums even if the variables names are different
                         let expr_key = (op.clone(), lhs_vn, rhs_vn);
                         
                         if let Some(&existing_vn) = expr_to_valnum.get(&expr_key) {
+                            // okay so we've seem this expression before, so just look up the variabnle where the
+                            // evaluation is stored
                             let var = valnum_to_var.get(&existing_vn).unwrap().clone();
                             let dest = dest.clone();
                             var_to_valnum.insert(dest.clone(), existing_vn);
 
+                            // instead of a binop primitive, just do an assign wit the new valnum variable
                             block.primitives[i] = Primitive::Assign {
                                 dest,
                                 value: Value::Variable(var),
@@ -486,6 +563,7 @@ impl CFG {
                     }
 
                     Primitive::Assign { dest, value } => {
+                        // ex: %a = %b or %a = 5
                         let vn = Self::get_valnum(value, &mut var_to_valnum, &mut const_to_valnum, &mut valnum_to_var, &mut valnum_count);
                         var_to_valnum.insert(dest.clone(), vn);
                         if !valnum_to_var.contains_key(&vn) {
@@ -524,6 +602,8 @@ impl CFG {
                 }
             }
 
+            // constants that are the same get the same value number
+            // ie if the constant is 10, then expressions using the constant 10 will match
             Value::Constant(c) => {
                 if let Some(&valnum) = const_to_valnum.get(c) {
                     valnum
@@ -534,7 +614,10 @@ impl CFG {
                     valnum
                 }
             }
-
+            
+            // globals are treated like variables
+            // ie global @vtablA gets the same value number
+            // so expressions witht hose work
             Value::Global(name) => {
                 if let Some(&valnum) = var_to_valnum.get(name) {
                     valnum
