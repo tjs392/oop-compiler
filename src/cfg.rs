@@ -75,7 +75,7 @@ impl CFG {
         }
     }
 
-    pub fn convert_to_ssa(&mut self, function: &mut Function) {
+    pub fn convert_to_ssa(&mut self, function: &mut Function, var_types: &mut HashMap<String, crate::ast::Type>) {
         self.compute_dominator_sets();
         self.insert_phi_functions(function);
 
@@ -83,7 +83,7 @@ impl CFG {
         let mut stacks: HashMap<String, Vec<String>> = HashMap::new();
         let mut counter: usize = 0;
 
-        self.rename(function, self.entry, &mut stacks, &mut counter, &tree);
+        self.rename(function, self.entry, &mut stacks, &mut counter, &tree, var_types);
     }
 
 
@@ -352,7 +352,8 @@ impl CFG {
                 idx: usize, 
                 stacks: &mut HashMap<String, Vec<String>>,
                 counter: &mut usize,
-                tree: &Vec<Vec<usize>>) {
+                tree: &Vec<Vec<usize>>,
+                var_types: &mut HashMap<String, crate::ast::Type>) {
         
         // this is for backtracking
         // we need to track how mny versions we push onto each variable's stack in the current block
@@ -372,6 +373,10 @@ impl CFG {
                 let old_name = assignment.clone();
                 let new_name = counter.to_string();
                 *counter += 1;
+
+                if let Some(typ) = var_types.get(&old_name).cloned() {
+                    var_types.insert(new_name.clone(), typ);
+                }
 
                 *assignment = new_name.clone();
                 stacks.entry(old_name.clone()).or_insert_with(Vec::new).push(new_name);
@@ -418,7 +423,7 @@ impl CFG {
 
         // do children then pop when done w children
         for &child in &tree[idx] {
-            self.rename(function, child, stacks, counter, tree);
+            self.rename(function, child, stacks, counter, tree, var_types);
         }
 
         for (var, count) in pushed {

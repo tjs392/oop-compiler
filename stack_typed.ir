@@ -1,0 +1,256 @@
+data:
+global array vtblListNode: { getNextListNode, getValListNode, 0, 0, 0 }
+global array fieldsListNode: { 1, 2, 0 }
+global array vtblStack: { 0, 0, pushStack, popStack, 0 }
+global array fieldsStack: { 0, 0, 1 }
+global array vtblStacker: { 0, 0, 0, 0, doStacker }
+global array fieldsStacker: { 0, 0, 0 }
+
+code:
+
+getNextListNode(this):
+  if %this then fieldOk1 else badptr0
+
+fieldOk1:
+  %0 = getelt(%this, 2)
+  jump final2
+
+badptr0:
+  fail NotAPointer
+
+final2:
+  ret %0
+
+getValListNode(this):
+  if %this then fieldOk4 else badptr3
+
+fieldOk4:
+  %0 = getelt(%this, 1)
+  jump final5
+
+badptr3:
+  fail NotAPointer
+
+final5:
+  ret %0
+
+pushStack(this, v):
+  %0 = 0
+  %1 = alloc(3)
+  store(%1, @vtblListNode)
+  %2 = %1
+  if %2 then fieldOk7 else badptr6
+
+fieldOk7:
+  setelt(%2, 1, %v)
+  jump final8
+
+badptr6:
+  fail NotAPointer
+
+final8:
+  if %this then fieldOk10 else badptr9
+
+fieldOk10:
+  %3 = getelt(%this, 1)
+  jump final11
+
+badptr9:
+  fail NotAPointer
+
+final11:
+  if %2 then fieldOk13 else badptr12
+
+fieldOk13:
+  setelt(%2, 2, %3)
+  jump final14
+
+badptr12:
+  fail NotAPointer
+
+final14:
+  if %this then fieldOk16 else badptr15
+
+fieldOk16:
+  setelt(%this, 1, %2)
+  jump final17
+
+badptr15:
+  fail NotAPointer
+
+final17:
+  ret 0
+
+popStack(this):
+  %0 = 0
+  %1 = 0
+  if %this then fieldOk19 else badptr18
+
+fieldOk19:
+  %2 = getelt(%this, 1)
+  jump final20
+
+badptr18:
+  fail NotAPointer
+
+final20:
+  %3 = %2 == 0
+  if %3 then then21 else else22
+
+then21:
+  ret 0
+
+else22:
+  if %this then fieldOk25 else badptr24
+
+fieldOk25:
+  %4 = getelt(%this, 1)
+  jump final26
+
+badptr24:
+  fail NotAPointer
+
+final26:
+  %5 = %4
+  if %5 then methodOk28 else badptr27
+
+methodOk28:
+  %6 = load(%5)
+  %7 = getelt(%6, 1)
+  %8 = call(%7, %5)
+  jump final29
+
+badptr27:
+  fail NotAPointer
+
+final29:
+  %9 = %8
+  if %5 then methodOk31 else badptr30
+
+methodOk31:
+  %10 = load(%5)
+  %11 = getelt(%10, 0)
+  %12 = call(%11, %5)
+  jump final32
+
+badptr30:
+  fail NotAPointer
+
+final32:
+  if %this then fieldOk34 else badptr33
+
+fieldOk34:
+  setelt(%this, 1, %12)
+  jump final35
+
+badptr33:
+  fail NotAPointer
+
+final35:
+  ret %9
+
+merge23:
+  ret 0
+
+doStacker(this, stk):
+  %0 = 0
+  %1 = 0
+  %2 = 20
+  jump condLabel36
+
+condLabel36:
+  %3 = phi(doStacker, %2, final41, %9)
+  %4 = %3 > 0
+  if %4 then whileBody37 else whileMerge38
+
+whileBody37:
+  if %stk then methodOk40 else badptr39
+
+methodOk40:
+  %5 = load(%stk)
+  %6 = getelt(%5, 2)
+  %7 = call(%6, %stk, %3)
+  jump final41
+
+badptr39:
+  fail NotAPointer
+
+final41:
+  %8 = %3 - 1
+  %9 = %8
+  jump condLabel36
+
+whileMerge38:
+  if %stk then methodOk43 else badptr42
+
+methodOk43:
+  %10 = load(%stk)
+  %11 = getelt(%10, 3)
+  %12 = call(%11, %stk)
+  jump final44
+
+badptr42:
+  fail NotAPointer
+
+final44:
+  %13 = %12
+  jump condLabel45
+
+condLabel45:
+  %14 = phi(final44, %13, final50, %20)
+  %15 = %14 == 0
+  %16 = %15 ^ 1
+  if %16 then whileBody46 else whileMerge47
+
+whileBody46:
+  print(%14)
+  if %stk then methodOk49 else badptr48
+
+methodOk49:
+  %17 = load(%stk)
+  %18 = getelt(%17, 3)
+  %19 = call(%18, %stk)
+  jump final50
+
+badptr48:
+  fail NotAPointer
+
+final50:
+  %20 = %19
+  jump condLabel45
+
+whileMerge47:
+  ret 0
+
+main:
+  %0 = 0
+  %1 = 0
+  %2 = alloc(2)
+  store(%2, @vtblStack)
+  %3 = %2
+  if %3 then fieldOk52 else badptr51
+
+fieldOk52:
+  setelt(%3, 1, 0)
+  jump final53
+
+badptr51:
+  fail NotAPointer
+
+final53:
+  %4 = alloc(1)
+  store(%4, @vtblStacker)
+  %5 = %4
+  if %5 then methodOk55 else badptr54
+
+methodOk55:
+  %6 = load(%5)
+  %7 = getelt(%6, 4)
+  %8 = call(%7, %5, %3)
+  jump final56
+
+badptr54:
+  fail NotAPointer
+
+final56:
+  ret 0

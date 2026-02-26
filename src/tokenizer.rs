@@ -161,6 +161,8 @@ impl Tokenizer {
                     "with" => Token::With,
                     "locals" => Token::Locals,
                     "main" => Token::Main,
+                    "returning" => Token::Returning,
+                    "null" => Token::Null,
                     _ => Token::Identifier(fragment.to_string()),
                 }
             }

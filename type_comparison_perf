@@ -1,0 +1,15 @@
+#!/bin/bash
+
+FILE=${1:-test_programs/stack_typed.441}
+UNTYPED=${2:-test_programs/stack_untyped.441}
+
+cargo build --release 2>/dev/null
+
+./target/release/compiler "$FILE" > /tmp/typed.ir
+./bin/comp_m2 "$UNTYPED" > /tmp/untyped.ir
+
+echo "\n=== Typed Stats ==="
+./bin/ir441 perf /tmp/typed.ir | grep ExecStats
+
+echo "=== Untyped Stats ==="
+./bin/ir441 perf /tmp/untyped.ir | grep ExecStats

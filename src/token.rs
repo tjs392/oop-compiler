@@ -35,7 +35,9 @@ pub enum TokenType {
     Operator,
     Number,
     Identifier,
-    Equals
+    Equals,
+    Returning,
+    Null,
 }
 
 #[derive(Debug, Clone)]
@@ -76,7 +78,9 @@ pub enum Token {
     Comma,
     Eof,
     This,
-    Equals
+    Equals,
+    Returning,
+    Null,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -132,6 +136,7 @@ impl Token {
             Token::IfOnly => TokenType::IfOnly,
             Token::While => TokenType::While,
             Token::Return => TokenType::Return,
+            Token::Returning => TokenType::Returning,
             Token::Print => TokenType::Print,
             Token::Colon => TokenType::Colon,
             Token::Comma => TokenType::Comma,
@@ -146,6 +151,7 @@ impl Token {
             Token::Main => TokenType::Main,
             Token::LeftBracket => TokenType::LeftBracket,
             Token::RightBracket => TokenType::RightBracket,
+            Token::Null => TokenType::Null,
         }
     }
 }

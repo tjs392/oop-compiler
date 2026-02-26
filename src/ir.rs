@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+
+use crate::ast;
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Constant(i64),
@@ -139,6 +143,7 @@ pub struct GlobalArray {
 pub struct Program {
     pub globals: Vec<GlobalArray>,
     pub functions: Vec<Function>,
+    pub var_types: HashMap<String, ast::Type>,
 }
 
 /*

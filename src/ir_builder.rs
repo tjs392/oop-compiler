@@ -20,6 +20,11 @@ pub struct IRBuilder {
     global_method_ids: HashMap<String, usize>,
 
     current_block_has_explicit_return: bool,
+
+    type_environment: HashMap<String, ast::Type>,
+    classes: Vec<ast::Class>,
+
+    var_types: HashMap<String, ast::Type>,
 }
 
 struct ClassMetadata {
@@ -82,6 +87,51 @@ impl IRBuilder {
             global_field_ids: HashMap::new(),
             global_method_ids: HashMap::new(),
             current_block_has_explicit_return: false,
+            type_environment: HashMap::new(),
+            classes: vec![],
+            var_types: HashMap::new(),
+        }
+    }
+
+    fn evaluate_type(&self, expr: &Expression) -> ast::Type {
+        match expr {
+            Expression::Variable(name) => self.type_environment.get(name).unwrap().clone(),
+
+            Expression::ThisExpr => self.type_environment.get("this").unwrap().clone(),
+
+            Expression::ClassRef(name) => ast::Type::ClassType(name.clone()),
+
+            Expression::Null(name) => ast::Type::ClassType(name.clone()),
+
+            // constants & binoips are always ints
+            Expression::Constant(_) => ast::Type::Int,
+
+            Expression::Binop { .. } => ast::Type::Int,
+
+            // we can recursively eval the type in a field read by evaluate the base and then 
+            // find the type
+            Expression::FieldRead { base, field_name } => {
+                if let ast::Type::ClassType(class_name) = self.evaluate_type(base) {
+                    let class = self.classes.iter().find(|c| c.name == class_name).unwrap();
+                    class.fields.iter()
+                        .find(|(n, _)| n == field_name)
+                        .map(|(_, t)| t.clone())
+                        .unwrap()
+                } else { panic!("field read on int") }
+            }
+
+            Expression::FieldWrite { base, .. } => {
+                self.evaluate_type(base)
+            }
+            
+            // method call is like field read
+            Expression::MethodCall { base, method_name, .. } => {
+                if let ast::Type::ClassType(class_name) = self.evaluate_type(base) {
+                    let class = self.classes.iter().find(|c| c.name == class_name).unwrap();
+                    let method = class.methods.iter().find(|m| m.name == *method_name).unwrap();
+                    method.return_type.clone()
+                } else { panic!("method call on int") }
+            }
         }
     }
 
@@ -146,7 +196,7 @@ impl IRBuilder {
 
         // THIS IS WHAT ALOWS THE POLYMORPHISM
         for class in &program.classes {
-            for field in &class.fields {
+            for (field, _) in &class.fields {
                 if !self.global_field_ids.contains_key(field) {
                     self.global_field_ids.insert(field.clone(), next_field_id);
                     next_field_id += 1;
@@ -169,8 +219,8 @@ impl IRBuilder {
         for class in &program.classes {
             // field_name -> slot offset within object
             let mut field_map = HashMap::new();
-            for (i, field) in class.fields.iter().enumerate() {
-                field_map.insert(field.clone(), 2 + i);
+            for (i, (field, _)) in class.fields.iter().enumerate() {
+                field_map.insert(field.clone(), 1 + i);
             }
 
             // method name -> index within the class's method list
@@ -194,6 +244,8 @@ impl IRBuilder {
                 vals: vtable_vals,
             });
 
+            // size = total_fields across all classes
+            // same as vtable array, 0 means that it doesnt have the field
             let mut field_offsets: Vec<String> = vec!["0".to_string(); total_fields];
 
             for (field_name, slot_offset) in &field_map {
@@ -280,193 +332,60 @@ impl IRBuilder {
 
             // if its a contant, tag the leftmost bit with 1
             Expression::Constant(n) => {
-                Value::Constant(2 * (*n) + 1)
+                Value::Constant(*n)
             }
 
             Expression::Variable(name) => {
                 Value::Variable(name.clone())
             }
 
-            // for binop we need to check if it's pointer arithmetic or regular
-            // arithmetic
-            // so we untag both left and right sides and do math then tag them back
+            // we no longer need to do type checking so just do raw math
             Expression::Binop { lhs, op, rhs } => {
                 let left = self.gen_expression(lhs);
                 let right = self.gen_expression(rhs);
 
                 if *op == Operator::Equals {
-                    let raw_result = self.gen_unique_variable("rawResult");
-                    self.push_instruction(Primitive::BinOp {
-                        dest: raw_result.clone(),
-                        lhs: left,
-                        op: op.to_string(),
-                        rhs: right,
-                    });
-
-                    // tag the result, this will for 0 or 1
-                    let tagged_result = self.gen_unique_variable("tagged_result");
-                    self.push_instruction(Primitive::BinOp {
-                        dest: tagged_result.clone(),
-                        lhs: Value::Variable(raw_result),
-                        op: "*".to_string(),
-                        rhs: Value::Constant(2),
-                    });
-
                     let result = self.gen_unique_variable("result");
+                    self.var_types.insert(result.clone(), ast::Type::Int);
+
                     self.push_instruction(Primitive::BinOp {
                         dest: result.clone(),
-                        lhs: Value::Variable(tagged_result),
-                        op: "+".to_string(),
-                        rhs: Value::Constant(1),
+                        lhs: left,
+                        op: "==".to_string(),
+                        rhs: right,
                     });
-
                     return Value::Variable(result);
                 }
 
                 if *op == Operator::NotEquals {
-                    // the ir doesnt have !=, so just do two instructions with ! and ==
                     let eq_result = self.gen_unique_variable("eqResult");
+                    self.var_types.insert(eq_result.clone(), ast::Type::Int);
                     self.push_instruction(Primitive::BinOp {
                         dest: eq_result.clone(),
                         lhs: left,
                         op: "==".to_string(),
                         rhs: right,
                     });
+                    let result = self.gen_unique_variable("result");
+                    self.var_types.insert(result.clone(), ast::Type::Int);
 
-                    // you can flip an equality using xor
-                    let flipped = self.gen_unique_variable("flipped");
                     self.push_instruction(Primitive::BinOp {
-                        dest: flipped.clone(),
+                        dest: result.clone(),
                         lhs: Value::Variable(eq_result),
                         op: "^".to_string(),
                         rhs: Value::Constant(1),
                     });
-
-                    let tagged_result = self.gen_unique_variable("tagged_result");
-                    self.push_instruction(Primitive::BinOp {
-                        dest: tagged_result.clone(),
-                        lhs: Value::Variable(flipped),
-                        op: "*".to_string(),
-                        rhs: Value::Constant(2),
-                    });
-
-                    let result = self.gen_unique_variable("result");
-                    self.push_instruction(Primitive::BinOp {
-                        dest: result.clone(),
-                        lhs: Value::Variable(tagged_result),
-                        op: "+".to_string(),
-                        rhs: Value::Constant(1),
-                    });
-
                     return Value::Variable(result);
                 }
 
-                // tag checking
-                // just do left & 1 
-                let left_tag = self.gen_unique_variable("numTag");
-                self.push_instruction(Primitive::BinOp {
-                    dest: left_tag.clone(),
-                    lhs: left.clone(),
-                    op: "&".to_string(),
-                    rhs: Value::Constant(1),
-                });
-                
-
-                let bad_num_label = self.gen_unique_label("badnum");
-                let check_right_label = self.gen_unique_label("checkRight");
-                
-                // badnum err if not tagged
-                self.finish_block(
-                    ControlTransfer::Branch {
-                        cond: Value::Variable(left_tag),
-                        then_lab: check_right_label.clone(),
-                        else_lab: bad_num_label.clone(),
-                    },
-                    check_right_label.clone(),
-                );
-                
-                // now checkright tag and do the same thing as left
-                let right_tag = self.gen_unique_variable("numTag");
-                self.push_instruction(Primitive::BinOp {
-                    dest: right_tag.clone(),
-                    lhs: right.clone(),
-                    op: "&".to_string(),
-                    rhs: Value::Constant(1),
-                });
-
-                let do_math_label = self.gen_unique_label("doMath");
-                let bad_num_label2 = self.gen_unique_label("badnum");
-
-                self.finish_block(
-                    ControlTransfer::Branch {
-                        cond: Value::Variable(right_tag),
-                        then_lab: do_math_label.clone(),
-                        else_lab: bad_num_label2.clone(),
-                    },
-                    do_math_label.clone(),
-                );
-
-                // now both of them are tagged with 1, we can shift right to get the raw num
-                // num >> 1 is the same as num / 2
-                let left_untagged = self.gen_unique_variable("untagged");
-                self.push_instruction(Primitive::BinOp {
-                    dest: left_untagged.clone(),
-                    lhs: left,
-                    op: "/".to_string(),
-                    rhs: Value::Constant(2),
-                });
-
-                let right_untagged = self.gen_unique_variable("untagged");
-                self.push_instruction(Primitive::BinOp {
-                    dest: right_untagged.clone(),
-                    lhs: right,
-                    op: "/".to_string(),
-                    rhs: Value::Constant(2),
-                });
-
-                // do da maf and get raw res
-                let raw_result = self.gen_unique_variable("rawResult");
-                self.push_instruction(Primitive::BinOp {
-                    dest: raw_result.clone(),
-                    lhs: Value::Variable(left_untagged),
-                    op: op.to_string(),
-                    rhs: Value::Variable(right_untagged),
-                });
-
-                // re tag the result num
-                let tagged_result = self.gen_unique_variable("tagged_result");
-                self.push_instruction(Primitive::BinOp {
-                    dest: tagged_result.clone(),
-                    lhs: Value::Variable(raw_result),
-                    op: "*".to_string(),
-                    rhs: Value::Constant(2),
-                });
-
                 let result = self.gen_unique_variable("result");
+                self.var_types.insert(result.clone(), ast::Type::Int);
                 self.push_instruction(Primitive::BinOp {
                     dest: result.clone(),
-                    lhs: Value::Variable(tagged_result),
-                    op: "+".to_string(),
-                    rhs: Value::Constant(1),
+                    lhs: left,
+                    op: op.to_string(),
+                    rhs: right,
                 });
-
-                // hold fails
-                let final_label = self.gen_unique_label("final");
-                self.finish_block(
-                    ControlTransfer::Jump { target: final_label.clone() },
-                    bad_num_label.clone(),
-                );
-
-                self.finish_block(
-                    ControlTransfer::Fail { message: "NotANumber".to_string() },
-                    bad_num_label2.clone(),
-                );
-
-                self.finish_block(
-                    ControlTransfer::Fail { message: "NotANumber".to_string() },
-                    final_label.clone(),
-                );
-
                 Value::Variable(result)
             }
 
@@ -485,365 +404,209 @@ impl IRBuilder {
                 let metadata = self.class_metadata_map.get(class_name)
                     .expect(&format!("Class {} not found", class_name));
 
-                let alloc_size = 2 + metadata.field_count as i64;
+                let alloc_size = 1 + metadata.field_count as i64;
                 let obj_addr = self.gen_unique_variable("objAddr");
+                self.var_types.insert(obj_addr.clone(), ast::Type::ClassType(class_name.clone()));
+
                 self.push_instruction(Primitive::Alloc { 
                     dest: obj_addr.clone(), 
                     size: alloc_size, 
                 });
 
-                self.push_instruction(Primitive::Store { 
+                // no longer need to store field map
+                self.push_instruction(Primitive::Store {
                     addr: Value::Variable(obj_addr.clone()),
                     val: Value::Global(format!("vtbl{}", class_name)),
-                });
-
-                let fields_addr = self.gen_unique_variable("fieldsAddr");
-                self.push_instruction(Primitive::BinOp { 
-                    dest: fields_addr.clone(), 
-                    lhs: Value::Variable(obj_addr.clone()), 
-                    op: "+".to_string(), 
-                    rhs: Value::Constant(8), 
-                });
-
-                self.push_instruction(Primitive::Store { 
-                    addr: Value::Variable(fields_addr.clone()), 
-                    val: Value::Global(format!("fields{}", class_name)),
                 });
 
                 Value::Variable(obj_addr)
             }
 
-            // TODO: DRY -> There is repeated code for field access on field read & write. Congregate this into helper function
+            // we can now do direct acces field reads, dont need to do all the crazy stuff we were doing befre
+            /*
+                ffld Read: &x.f  (where x is of type A, and f is at slot 1)
+
+                BEFORE (untyped, with field map indirection):
+                    %tag = %x & 1
+                    if %tag then badptr else ok
+                    ok:
+                    %fieldMapAddr = %x + 8
+                    %fieldMap = load(%fieldMapAddr)
+                    %offset = getelt(%fieldMap, 0)
+                    if %offset then load else badfield
+                    load:
+                    %result = getelt(%x, %offset)
+                    jump final
+                    badptr: fail NotAPointer
+                    badfield: fail NoSuchField
+                    final: ...
+
+                AFTER (typed, direct slot access):
+                    if %x then fieldOk else badptr
+                    fieldOk:
+                    %result = getelt(%x, 1)
+                    jump final
+                    badptr: fail NotAPointer
+                    final: ...
+
+                this is good optimization after type checijgn
+            */
             Expression::FieldRead { base, field_name } => {
-                /*
-                    Field read is a bit confusing this is how it works:
-
-                    -- Compile Time --
-                        - Look up field_name in global_fields_ids -> get the global id.
-                            This is the index in the global field arrays at which it is at
-                            Ex: Let's say 'x' is the first field declared in the first class, it will be at idx 0
-                                Let's say 'y' is the FIRST field declared in the SECOND class, it will be at idx 1
-
-                    -- Run Time--
-                        - We will use this value at run time and search the field array. If the value at this location is 0
-                            then we want to fail because it's not accessible to the calling class
-                        - If it is something else, ie it will be 2 for the first field of any class, then we
-                            can you that value as an 8 * val offset for the mem addr for this
-
-                    Example code to generate:
-                    # !x.x = 3 (unoptimized)
-                    %2 = %x0 & 1
-                    if %2 then badptr2 else firstStoreX
-                    firstStoreX:
-                    %3 = %x0 + 8         # Address to 2nd slot for *field* map
-                    %4 = load(%3)       # Load field map
-                    %5 = getelt(%4, 0)  # Look up field id 0, which I assume is x
-                    if %5 then firstStoreXWorks else badfield2
-                    firstStoreXWorks:
-                    setelt(%x0, %5, 3)
-                */
-
-                // base_val is the address of the object instance that we want to read its field
+                let field_type = self.evaluate_type(expression);
                 let base_val = self.gen_expression(base);
-
-                // check the tag to make sure its last bit is not 1 (badptr)
-                let tag = self.gen_unique_variable("tag");
-                self.push_instruction(Primitive::BinOp { 
-                    dest: tag.clone(), 
-                    lhs: base_val.clone(), 
-                    op: "&".to_string(), 
-                    rhs: Value::Constant(1), 
-                });
-
-                let bad_ptr_label = self.gen_unique_label("badptr");
-                let continue_label = self.gen_unique_label("firstStore");
-
-                self.finish_block(
-                    ControlTransfer::Branch { 
-                        cond: Value::Variable(tag), 
-                        then_lab: bad_ptr_label.clone(), 
-                        else_lab: continue_label.clone() 
-                    },
-                    continue_label.clone()
-                );
-
-                // load the field map address
-                let field_map_addr = self.gen_unique_variable("fieldMapAddr");
-                self.push_instruction(Primitive::BinOp { 
-                    dest: field_map_addr.clone(), 
-                    lhs: base_val.clone(), 
-                    op: "+".to_string(), 
-                    rhs: Value::Constant(8), 
-                });
-
-                let field_map = self.gen_unique_variable("fieldMap");
-                self.push_instruction(Primitive::Load { 
-                    dest: field_map.clone(), 
-                    addr: Value::Variable(field_map_addr),
-                });
-
-                // look up the offset using the global field id
-                let global_idx = *self.global_field_ids.get(field_name)
-                    .expect(&format!("Field {} nt ofund", field_name));
-                let offset = self.gen_unique_variable("offset");
-                self.push_instruction(Primitive::GetElt { 
-                    dest: offset.clone(), 
-                    arr: Value::Variable(field_map), 
-                    idx: Value::Constant(global_idx as i64), 
-                });
-
-                // check field exists for the class (offset != 0)
-                let bad_field_label = self.gen_unique_label("badfield");
-                let load_label = self.gen_unique_label("load");
                 
+                let class_name = match self.evaluate_type(base) {
+                    ast::Type::ClassType(n) => n,
+                    _ => panic!("field read on non-class"),
+                };
+
+                let metadata = self.class_metadata_map.get(&class_name).unwrap();
+                let slot = *metadata.field_map.get(field_name).unwrap();
+
+                let bad_ptr = self.gen_unique_label("badptr");
+                let ok_label = self.gen_unique_label("fieldOk");
+                let final_label = self.gen_unique_label("final");
+
                 self.finish_block(
-                    ControlTransfer::Branch { 
-                        cond: Value::Variable(offset.clone()), 
-                        then_lab: load_label.clone(), 
-                        else_lab: bad_field_label.clone()
-                    }, 
-                    load_label.clone()
+                    ControlTransfer::Branch {
+                        cond: base_val.clone(),
+                        then_lab: ok_label.clone(),
+                        else_lab: bad_ptr.clone(),
+                    },
+                    ok_label.clone(),
                 );
 
-                // load in the value
                 let result = self.gen_unique_variable("result");
-                self.push_instruction(Primitive::GetElt { 
-                    dest: result.clone(), 
-                    arr: base_val, 
-                    idx: Value::Variable(offset), 
+                self.var_types.insert(result.clone(), field_type.clone());
+
+                self.push_instruction(Primitive::GetElt {
+                    dest: result.clone(),
+                    arr: base_val,
+                    idx: Value::Constant(slot as i64),
                 });
 
-                // fail labels
-                let final_label = self.gen_unique_label("final");
                 self.finish_block(
-                    ControlTransfer::Jump {target: final_label.clone() },
-                    bad_ptr_label.clone()
+                    ControlTransfer::Jump { target: final_label.clone() },
+                    bad_ptr,
                 );
-
                 self.finish_block(
                     ControlTransfer::Fail { message: "NotAPointer".to_string() },
-                    bad_field_label.clone()
-                );
-
-                self.finish_block(
-                    ControlTransfer::Fail { message: "NoSuchField".to_string() },
-                    final_label.clone()
+                    final_label,
                 );
 
                 Value::Variable(result)
             }
 
+            // similar opt here much shorter code no untagging, etc.
             Expression::FieldWrite { base, field_name, value } => {
-                /*
-                # !x.x = 3 (unoptimized)
-                %2 = %x0 & 1
-                if %2 then badptr2 else firstStoreX
-                firstStoreX:
-                %3 = %x0 + 8         # Address to 2nd slot for *field* map
-                %4 = load(%3)       # Load field map
-                %5 = getelt(%4, 0)  # Look up field id 0, which I assume is x
-                if %5 then firstStoreXWorks else badfield2
-                firstStoreXWorks:
-                setelt(%x0, %5, 3)
-                 */
-
                 let base_val = self.gen_expression(base);
                 let val = self.gen_expression(value);
 
-                // check the tag to make sure its last bit is not 1 (badptr)
-                // %2 = %x0 & 1
-                let tag = self.gen_unique_variable("tag");
-                self.push_instruction(Primitive::BinOp { 
-                    dest: tag.clone(), 
-                    lhs: base_val.clone(), 
-                    op: "&".to_string(), 
-                    rhs: Value::Constant(1), 
-                });
+                let class_name = match self.evaluate_type(base) {
+                    ast::Type::ClassType(n) => n,
+                    _ => panic!("field write on non-class"),
+                };
+                let metadata = self.class_metadata_map.get(&class_name).unwrap();
+                let slot = *metadata.field_map.get(field_name).unwrap();
 
-                // if %2 then badptr2 else firstStoreX
-                // firstStoreX:
-                let bad_ptr_label = self.gen_unique_label("badptr");
-                let continue_label = self.gen_unique_label("firstStore");
-
-                self.finish_block(
-                    ControlTransfer::Branch { 
-                        cond: Value::Variable(tag), 
-                        then_lab: bad_ptr_label.clone(), 
-                        else_lab: continue_label.clone() 
-                    },
-                    continue_label.clone()
-                );
-
-                // %3 = %x0 + 8
-                let field_map_addr = self.gen_unique_variable("fieldMapAddr");
-                self.push_instruction(Primitive::BinOp { 
-                    dest: field_map_addr.clone(), 
-                    lhs: base_val.clone(), 
-                    op: "+".to_string(), 
-                    rhs: Value::Constant(8), 
-                });
-
-                // %4 = load(%3)       # Load field map
-                let field_map = self.gen_unique_variable("fieldMap");
-                self.push_instruction(Primitive::Load { 
-                    dest: field_map.clone(), 
-                    addr: Value::Variable(field_map_addr),
-                });
-
-                // %5 = getelt(%4, 0)  # Look up field id 0, which I assume is x
-                let global_idx = *self.global_field_ids.get(field_name)
-                    .expect(&format!("Field {} not found", field_name));
-                let offset = self.gen_unique_variable("offset");
-                self.push_instruction(Primitive::GetElt { 
-                    dest: offset.clone(), 
-                    arr: Value::Variable(field_map), 
-                    idx: Value::Constant(global_idx as i64),
-                });
-
-                // if %5 then firstStoreXWorks else badfield2
-                let bad_field_label = self.gen_unique_label("badfield");
-                let load_label = self.gen_unique_label("load");
-
-                self.finish_block(
-                    ControlTransfer::Branch { 
-                        cond: Value::Variable(offset.clone()), 
-                        then_lab: load_label.clone(), 
-                        else_lab: bad_field_label.clone()
-                    }, 
-                    load_label.clone()
-                );
-
-                // firstStoreXWorks:
-                // setelt(%x0, %5, 3)
-                self.push_instruction(Primitive::SetElt { 
-                    arr: base_val, 
-                    idx: Value::Variable(offset),  
-                    val: val, 
-                });
-
-                // fail labels
+                let bad_ptr = self.gen_unique_label("badptr");
+                let ok_label = self.gen_unique_label("fieldOk");
                 let final_label = self.gen_unique_label("final");
+
                 self.finish_block(
-                    ControlTransfer::Jump {target: final_label.clone() },
-                    bad_ptr_label.clone()
+                    ControlTransfer::Branch {
+                        cond: base_val.clone(),
+                        then_lab: ok_label.clone(),
+                        else_lab: bad_ptr.clone(),
+                    },
+                    ok_label.clone(),
                 );
 
+                self.push_instruction(Primitive::SetElt {
+                    arr: base_val,
+                    idx: Value::Constant(slot as i64),
+                    val,
+                });
+
+                self.finish_block(
+                    ControlTransfer::Jump { target: final_label.clone() },
+                    bad_ptr,
+                );
                 self.finish_block(
                     ControlTransfer::Fail { message: "NotAPointer".to_string() },
-                    bad_field_label.clone()
-                );
-
-                self.finish_block(
-                    ControlTransfer::Fail { message: "NoSuchField".to_string() },
-                    final_label.clone()
+                    final_label,
                 );
 
                 Value::Constant(0)
             }
-            
+
+            /*
+            BEFORE: %tag = %x & 1 --> if %tag --> load vtable --> getelt --> if %methodPtr --> call
+            AFTER:  if %x then ok else badptr --> load vtable --> getelt --> call (no method check)
+            */
             Expression::MethodCall { base, method_name, args } => {
+                let return_type = self.evaluate_type(expression);
                 let base = self.gen_expression(base);
-                /*
-                # print(x.m())
-                %7 = %x0 & 1
-                if %7 then badptr3 else l1
-                l1:
-                %8 = load(%x0)         # load vtable (note: offset 0, not offset 8)
-                %9 = getelt(%8, 0)  # lookup method id 0 (the only method here)
-                if %9 then callAndPrint else badmethod
-                callAndPrint:
-                %10 = call(%9, %x0)
-                print(%10)
-                */
 
-                // For printing
-                // %7 = %x0 & 1
-                let tag = self.gen_unique_variable("tag");
-                self.push_instruction(Primitive::BinOp { 
-                    dest: tag.clone(), 
-                    lhs: base.clone(), 
-                    op: "&".to_string(), 
-                    rhs: Value::Constant(1),
-                });
-
-                // if %7 then badptr3 else l1
                 let badptr = self.gen_unique_label("badptr");
-                let load = self.gen_unique_label("load");
+                let ok_label = self.gen_unique_label("methodOk");
+                let final_label = self.gen_unique_label("final");
 
                 self.finish_block(
-                    ControlTransfer::Branch { 
-                        cond: Value::Variable(tag), 
-                        then_lab: badptr.clone(), 
-                        else_lab: load.clone(), 
+                    ControlTransfer::Branch {
+                        cond: base.clone(),
+                        then_lab: ok_label.clone(),
+                        else_lab: badptr.clone(),
                     },
-                    load.clone(),
+                    ok_label.clone(),
                 );
 
-                // %8 = load (%x0)
+                // load vtable
                 let vtable = self.gen_unique_variable("vtable");
-                self.push_instruction(Primitive::Load { 
-                    dest: vtable.clone(), 
-                    addr: base.clone(),  
+                self.push_instruction(Primitive::Load {
+                    dest: vtable.clone(),
+                    addr: base.clone(),
                 });
 
-                // %9 = getelt(%8, 0)
+                // lookup method - type checker guarantees it exists, no need to check
                 let global_method_id = *self.global_method_ids.get(method_name)
                     .expect(&format!("Method {} not found", method_name));
                 let method_ptr = self.gen_unique_variable("methodPtr");
-                self.push_instruction(Primitive::GetElt { 
-                    dest: method_ptr.clone(), 
-                    arr: Value::Variable(vtable), 
+                self.push_instruction(Primitive::GetElt {
+                    dest: method_ptr.clone(),
+                    arr: Value::Variable(vtable),
                     idx: Value::Constant(global_method_id as i64),
                 });
 
-                // if %9 then callAndPrint else badmethod
-                let badmethod = self.gen_unique_label("badmethod");
-                let call_and_print = self.gen_unique_label("callAndPrint");
-
-                self.finish_block(
-                    ControlTransfer::Branch { 
-                        cond: Value::Variable(method_ptr.clone()), 
-                        then_lab: call_and_print.clone(), 
-                        else_lab: badmethod.clone() 
-                    },
-                    call_and_print.clone()
-                );
-
-
-                // callAndPrint:
-                // %10 = call(%9, %x0)
-
+                // can now call directly :D
                 let result = self.gen_unique_variable("callResult");
+                self.var_types.insert(result.clone(), return_type.clone());
                 let arguments: Vec<Value> = args
                     .iter()
                     .map(|a| self.gen_expression(a))
                     .collect();
-                
-                self.push_instruction(Primitive::Call { 
-                    dest: result.clone(), 
-                    func: Value::Variable(method_ptr.clone()), 
+
+                self.push_instruction(Primitive::Call {
+                    dest: result.clone(),
+                    func: Value::Variable(method_ptr),
                     receiver: base,
                     args: arguments,
                 });
 
-                // fail labels
-                let final_label = self.gen_unique_label("final");
                 self.finish_block(
                     ControlTransfer::Jump { target: final_label.clone() },
-                    badptr.clone()
+                    badptr,
                 );
-
                 self.finish_block(
                     ControlTransfer::Fail { message: "NotAPointer".to_string() },
-                    badmethod.clone()
+                    final_label,
                 );
 
-                self.finish_block(
-                    ControlTransfer::Fail { message: "NoSuchMethod".to_string() },
-                    final_label.clone()
-                );
-                
                 Value::Variable(result)
+            }
+
+            Expression::Null(_) => {
+                Value::Constant(0)
             }
         }
     }
@@ -864,19 +627,10 @@ impl IRBuilder {
                 self.gen_expression(expr);
             }
 
-            // gotta untag before prints
+            // no more tagging needed
             Statement::Print(expression) => {
                 let val = self.gen_expression(expression);
-
-                let untagged = self.gen_unique_variable("untagged");
-                self.push_instruction(Primitive::BinOp {
-                    dest: untagged.clone(),
-                    lhs: val,
-                    op: "/".to_string(),
-                    rhs: Value::Constant(2),
-                });
-
-                self.push_instruction(Primitive::Print { val: Value::Variable(untagged) });
+                self.push_instruction(Primitive::Print { val });
             }
 
             Statement::Return(expression) => {
@@ -928,14 +682,17 @@ impl IRBuilder {
                 */
                 let condition = self.gen_expression(condition);
 
-                // gotta untag condition
-                let untagged_cond = self.gen_unique_variable("untaggedCond");
-                self.push_instruction(Primitive::BinOp {
-                    dest: untagged_cond.clone(),
-                    lhs: condition,
-                    op: "/".to_string(),
-                    rhs: Value::Constant(2),
-                });
+                let cond_var = match &condition {
+                    Value::Variable(v) => v.clone(),
+                    other => {
+                        let tmp = self.gen_unique_variable("cond");
+                        self.push_instruction(Primitive::Assign {
+                            dest: tmp.clone(),
+                            value: other.clone(),
+                        });
+                        tmp
+                    }
+                };
 
                 let then_label = self.gen_unique_label("then");
                 let else_label = self.gen_unique_label("else");
@@ -943,7 +700,7 @@ impl IRBuilder {
 
                 self.finish_block(
                     ControlTransfer::Branch { 
-                        cond: Value::Variable(untagged_cond),
+                        cond: Value::Variable(cond_var),
                         then_lab: then_label.clone(), 
                         else_lab: else_label.clone(), 
                     },
@@ -984,17 +741,21 @@ impl IRBuilder {
                 let merge_label = self.gen_unique_label("merge");
                 let condition = self.gen_expression(condition);
 
-                let untagged_cond = self.gen_unique_variable("untaggedCond");
-                self.push_instruction(Primitive::BinOp {
-                    dest: untagged_cond.clone(),
-                    lhs: condition,
-                    op: "/".to_string(),
-                    rhs: Value::Constant(2),
-                });
+                let cond_var = match &condition {
+                    Value::Variable(v) => v.clone(),
+                    other => {
+                        let tmp = self.gen_unique_variable("cond");
+                        self.push_instruction(Primitive::Assign {
+                            dest: tmp.clone(),
+                            value: other.clone(),
+                        });
+                        tmp
+                    }
+                };
 
                 self.finish_block(
                     ControlTransfer::Branch { 
-                        cond: Value::Variable(untagged_cond),
+                        cond: Value::Variable(cond_var),
                         then_lab: then_label.clone(), 
                         else_lab: merge_label.clone(),
                     },
@@ -1025,20 +786,24 @@ impl IRBuilder {
                     },
                     cond_label.clone(),
                 );
+                
+                let condition = self.gen_expression(condition);
 
-                let cond_val = self.gen_expression(condition);
-
-                let untagged_cond = self.gen_unique_variable("untaggedCond");
-                self.push_instruction(Primitive::BinOp {
-                    dest: untagged_cond.clone(),
-                    lhs: cond_val,
-                    op: "/".to_string(),
-                    rhs: Value::Constant(2),
-                });
+                let cond_var = match &condition {
+                    Value::Variable(v) => v.clone(),
+                    other => {
+                        let tmp = self.gen_unique_variable("cond");
+                        self.push_instruction(Primitive::Assign {
+                            dest: tmp.clone(),
+                            value: other.clone(),
+                        });
+                        tmp
+                    }
+                };
 
                 self.finish_block(
                     ControlTransfer::Branch {
-                        cond: Value::Variable(untagged_cond),
+                        cond: Value::Variable(cond_var),
                         then_lab: body_label.clone(),
                         else_lab: merge_label.clone(),
                     },
@@ -1084,10 +849,19 @@ impl IRBuilder {
             ))(i).map(|(rest,(name,formals,prims,ctrl))| (rest,BasicBlock { name: name, instrs: prims, next: ctrl, formals: formals}))
         }
         */
+        self.type_environment.clear();
+        self.type_environment.insert("this".to_string(), ast::Type::ClassType(class.name.clone()));
+        for (arg, typ) in &method.args {
+            self.type_environment.insert(arg.clone(), typ.clone());
+        }
+        for (local, typ) in &method.locals {
+            self.type_environment.insert(local.clone(), typ.clone());
+        }
+
         let function_name = format!("{}{}", method.name, class.name);
 
         let mut args = vec!["this".to_string()];
-        for arg in &method.args {
+        for (arg, _) in &method.args {
             args.push(arg.clone());
         }
 
@@ -1101,10 +875,10 @@ impl IRBuilder {
         self.current_block_has_explicit_return = false;
 
         // initialize the locals to tagged 0s
-        for local in &method.locals {
+        for (local, _) in &method.locals {
             self.push_instruction(Primitive::Assign {
                 dest: local.clone(),
-                value: Value::Constant(1),
+                value: Value::Constant(0),
             });
         }
 
@@ -1116,12 +890,18 @@ impl IRBuilder {
     }
 
     pub fn gen_program(&mut self, program: &ast::Program) -> ir::Program {
+        self.classes = program.classes.clone();
         self.gen_class_metadata(program);
 
         for class in &program.classes {
             for method in &class.methods {
                 self.gen_method(class, method);
             }
+        }
+
+        self.type_environment.clear();
+        for (local, typ) in &program.main_locals {
+            self.type_environment.insert(local.clone(), typ.clone());
         }
 
         // generating main block
@@ -1134,10 +914,10 @@ impl IRBuilder {
         self.current_block_has_explicit_return = false;
 
         // must initialize main locals, just make them tagged 0
-        for local in &program.main_locals {
+        for (local, _) in &program.main_locals {
             self.push_instruction(Primitive::Assign {
                 dest: local.clone(),
-                value: Value::Constant(1),
+                value: Value::Constant(0),
             });
         }
 
@@ -1150,6 +930,7 @@ impl IRBuilder {
         ir::Program {
             globals: self.globals.clone(),
             functions: self.functions.clone(),
+            var_types: self.var_types.clone(),
         }
     }
 }

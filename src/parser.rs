@@ -2,7 +2,7 @@ use crate::token::{Token, TokenType};
 use crate::tokenizer::Tokenizer;
 use crate::expression::Expression;
 use crate::statement::Statement;
-use crate::ast::{Method, Class, Program};
+use crate::ast::{Class, Method, Program, Type};
 
 pub struct Parser {
     tok: Tokenizer,
@@ -115,6 +115,18 @@ impl Parser {
             }
 
             Token::This => Expression::ThisExpr,
+
+            Token::Null => {
+                match self.tok.next() {
+                    Token::Colon => {},
+                    other => panic!("Expected a ':' after null, but got {:?}", other),
+                }
+                let class_name = match self.tok.next() {
+                    Token::Identifier(n) => n,
+                    other => panic!("Expected class name after null:, got {:?}", other),
+                };
+                Expression::Null(class_name)
+            }
 
             other => panic!("Token {:?} is not a valid start of an expression", other),
         }
@@ -302,10 +314,17 @@ impl Parser {
             other => panic!("expected '(' after method name, got {:?}", other),
         }
 
-        let mut args = Vec::<String>::new();
+        let mut args = Vec::<(String, Type)>::new();
         while self.tok.peek().get_type() != TokenType::RightParen {
             match self.tok.next() {
-                Token::Identifier(arg) => args.push(arg),
+                Token::Identifier(arg) => {
+                    match self.tok.next() {
+                        Token::Colon => {},
+                        other => panic!("Expected : after arg name, got {:?}", other),
+                    }
+                    let typ = self.parse_type();
+                    args.push((arg, typ));
+                },
                 other => panic!("Expected argument, got {:?}", other)
             }
 
@@ -314,6 +333,13 @@ impl Parser {
             }
         }
         self.tok.next();
+
+        let return_type = if self.tok.peek().get_type() == TokenType::Returning {
+            self.tok.next();
+            self.parse_type()
+        } else {
+            Type::Int
+        };
 
         match self.tok.next() {
             Token::With => {},
@@ -325,10 +351,17 @@ impl Parser {
             other => panic!("Expected 'locals' after 'with', got {:?}", other),
         }
 
-        let mut locals = Vec::<String>::new();
+        let mut locals = Vec::<(String, Type)>::new();
         while self.tok.peek().get_type() != TokenType::Colon {
             match self.tok.next() {
-                Token::Identifier(local) => locals.push(local),
+                Token::Identifier(local) => {
+                    match self.tok.next() {
+                        Token::Colon => {},
+                        other => panic!("Expected : after local name, got {:?}", other),
+                    }
+                    let typ = self.parse_type();
+                    locals.push((local, typ));
+                },
                 other => panic!("Expected local variable name, but got {:?}", other),
             }
 
@@ -347,7 +380,7 @@ impl Parser {
             body.push(self.parse_statement());
         }
 
-        Method { name, args, locals, body}
+        Method { name, args, locals, body, return_type }
     }
 
     pub fn parse_class(&mut self) -> Class {
@@ -381,10 +414,17 @@ impl Parser {
             other => panic!("Expected 'fields, got {:?}", other),
         }
 
-        let mut fields = Vec::<String>::new();
+        let mut fields = Vec::<(String, Type)>::new();
         while self.tok.peek().get_type() != TokenType::Method && self.tok.peek().get_type() != TokenType::RightBracket {
             match self.tok.next() {
-                Token::Identifier(field) => fields.push(field),
+                Token::Identifier(field) => {
+                    match self.tok.next() {
+                        Token::Colon => {},
+                        other => panic!("Expected : after field name, got {:?}", other),
+                    }
+                    let typ = self.parse_type();
+                    fields.push((field, typ));
+                },
                 other => panic!("Expected a field name, got {:?}", other),
             }
 
@@ -423,10 +463,17 @@ impl Parser {
             other => panic!("Expected 'with', but got {:?}", other),
         }
 
-        let mut main_locals = Vec::<String>::new();
+        let mut main_locals = Vec::<(String,Type)>::new();
         while self.tok.peek().get_type() != TokenType::Colon {
             match self.tok.next() {
-                Token::Identifier(local) => main_locals.push(local),
+                Token::Identifier(local) => {
+                    match self.tok.next() {
+                        Token::Colon => {},
+                        other => panic!("Expected : after local name, got {:?}", other),
+                    }
+                    let typ = self.parse_type();
+                    main_locals.push((local, typ));
+                },
                 other => panic!("(Expected local variable name but got {:?}", other),
             }
 
@@ -442,5 +489,18 @@ impl Parser {
         }
         
         Program { classes, main_locals, main_body }
+    }
+
+    pub fn parse_type(&mut self) -> Type {
+        match self.tok.next() {
+            Token::Identifier(name) => {
+                if name == "int" {
+                    Type::Int
+                } else {
+                    Type::ClassType(name)
+                }
+            }
+            other => panic!("Expected type, not {:?}", other)
+        }
     }
 }

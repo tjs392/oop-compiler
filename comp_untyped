@@ -1,0 +1,3 @@
+#!/bin/bash
+
+./bin/comp_m2 "$@"

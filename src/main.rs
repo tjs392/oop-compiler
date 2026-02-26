@@ -7,11 +7,14 @@ mod ast;
 mod ir;
 mod ir_builder;
 mod cfg;
+mod typechecker;
 
 use tokenizer::Tokenizer;
 use parser::Parser;
 use ir_builder::IRBuilder;
 use cfg::CFG;
+
+use crate::typechecker::TypeChecker;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -61,22 +64,25 @@ fn main() {
     let mut parser = Parser::new(tokenizer);
     let ast = parser.parse_program();
 
+    let checker = TypeChecker::new(&ast);
+    checker.check_program(&ast);
+
     let mut ir_builder = IRBuilder::new();
     let mut ir_program = ir_builder.gen_program(&ast);
 
-    for function in &mut ir_program.functions {
-        let mut cfg = CFG::new(function);
+    for i in 0..ir_program.functions.len() {
+        let mut cfg = CFG::new(&ir_program.functions[i]);
 
         if use_ssa {
-            cfg.convert_to_ssa(function);
+            cfg.convert_to_ssa(&mut ir_program.functions[i], &mut ir_program.var_types);
         }
 
         if use_vn {
-            cfg.value_numbering(function);
+            cfg.value_numbering(&mut ir_program.functions[i]);
         }
 
         if use_fold {
-            cfg.fold_constants(function);
+            cfg.fold_constants(&mut ir_program.functions[i]);
         }
     }
 

@@ -27,4 +27,5 @@ pub enum Expression {
     },
     ClassRef(String),
     Variable(String),
+    Null(String),
 }
